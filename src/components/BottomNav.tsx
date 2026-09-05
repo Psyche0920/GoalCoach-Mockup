@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, BookOpen, RotateCcw, MessageSquare } from 'lucide-react';
+import { Compass, BookOpen, TrendingUp, MessageSquare } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: 'plan' | 'curriculum' | 'retention';
@@ -40,8 +40,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           activeTab === 'retention' ? 'text-emerald-600 font-extrabold' : 'text-zinc-500 font-bold'
         }`}
       >
-        <RotateCcw className="w-5 h-5" />
-        <span className="text-[10px] uppercase">Retention</span>
+        <TrendingUp className="w-5 h-5" />
+        <span className="text-[10px] uppercase">Progress</span>
       </button>
 
       <button

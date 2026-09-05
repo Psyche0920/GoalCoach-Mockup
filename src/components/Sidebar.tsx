@@ -2,6 +2,7 @@ import React from 'react';
 import { 
   Compass, 
   RotateCcw, 
+  TrendingUp,
   BookOpen, 
   MessageSquare, 
   Flame, 
@@ -74,8 +75,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               : 'text-zinc-600 hover:bg-zinc-100 border-2 border-transparent'
           }`}
         >
-          <RotateCcw className="w-5 h-5" />
-          <span>Retention</span>
+          <TrendingUp className="w-5 h-5" />
+          <span>Progress 进度</span>
         </button>
 
         <button

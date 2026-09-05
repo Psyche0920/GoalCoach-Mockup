@@ -1,23 +1,76 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import { HSK1_CONCEPTS, HSK1_TEACHING_CARDS, HSK1_EXERCISES } from './src/data/hsk1Curriculum.ts';
-import { LearnerState, DailyPlan, PlanItem, ConceptMastery, ErrorRecord, AnswerSubmission, LearningGoal } from './src/types.ts';
+import { HSK1_CONCEPTS, HSK1_TEACHING_CARDS, HSK1_EXERCISES, THEME_REGISTRY, GOAL_PRESETS } from './src/data/hsk1Curriculum.ts';
+import { LearnerState, DailyPlan, PlanItem, ConceptMastery, ErrorRecord, AnswerSubmission, LearningGoal, CurriculumTheme } from './src/types.ts';
 import { gradeAnswer } from './src/domain/grader.ts';
 import { calculateRetention, isConceptReviewDue } from './src/domain/retention.ts';
 import { route, computeOverallProgress } from './src/domain/orchestrator.ts';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// In-Memory Audio Cache for standard high-quality female TTS
+const ttsAudioCache = new Map<string, { buffer: Buffer; contentType: string }>();
+
+// Standard High-Quality Natural Chinese Female Voice Endpoint
+app.get('/api/tts', async (req: Request, res: Response) => {
+  try {
+    const rawText = (req.query.text as string || '').trim();
+    if (!rawText) {
+      return res.status(400).json({ error: 'Text query parameter is required' });
+    }
+
+    // Strictly strip all punctuation marks and symbols (标点符号跳过不读)
+    const cleanText = rawText.replace(/[\p{P}\p{S}\s]+/gu, ' ').trim();
+    if (!cleanText) {
+      return res.status(400).json({ error: 'No speakable text remaining after punctuation stripping' });
+    }
+
+    // Serve from cache if available
+    if (ttsAudioCache.has(cleanText)) {
+      const cached = ttsAudioCache.get(cleanText)!;
+      res.setHeader('Content-Type', cached.contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(cached.buffer);
+    }
+
+    // Fetch from Google Neural/Standard Chinese Female Broadcaster Voice
+    const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q=${encodeURIComponent(cleanText)}`;
+    const response = await fetch(gUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://translate.google.com/',
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Upstream TTS service error' });
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
+
+    if (ttsAudioCache.size >= 1000) {
+      const firstKey = ttsAudioCache.keys().next().value;
+      if (firstKey) ttsAudioCache.delete(firstKey);
+    }
+    ttsAudioCache.set(cleanText, { buffer, contentType });
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(buffer);
+  } catch (err: any) {
+    console.error('TTS endpoint error:', err);
+    res.status(500).json({ error: err.message || 'TTS generation failed' });
+  }
+});
 
 // In-Memory store for Learner States (ephemeral or persistent per session)
 const learnerStore = new Map<string, LearnerState>();
@@ -159,6 +212,13 @@ app.get('/api/v1/curriculum/exercises', (_req: Request, res: Response) => {
   res.json(HSK1_EXERCISES);
 });
 
+app.get('/api/v1/curriculum/themes', (_req: Request, res: Response) => {
+  res.json({
+    themes: THEME_REGISTRY,
+    presets: GOAL_PRESETS,
+  });
+});
+
 // 3. Learner state endpoints
 app.get('/api/v1/learners/:learner_id', (req: Request, res: Response) => {
   const learnerId = req.params.learner_id;
@@ -171,23 +231,25 @@ app.get('/api/v1/learners/:learner_id', (req: Request, res: Response) => {
 app.post('/api/v1/learners/:learner_id/goal', (req: Request, res: Response) => {
   const learnerId = req.params.learner_id;
   const state = getOrCreateLearner(learnerId);
-  const { title, dailyAvailableMinutes, targetHskLevel } = req.body;
+  const { title, dailyAvailableMinutes, targetHskLevel, interests, targetDomain } = req.body;
 
   state.goal = {
     id: `goal-${Date.now()}`,
     title: title || state.goal?.title || 'Master HSK 1',
     targetHskLevel: targetHskLevel || 1,
     dailyAvailableMinutes: dailyAvailableMinutes || 20,
+    interests: interests !== undefined ? interests : state.goal?.interests,
+    targetDomain: targetDomain || state.goal?.targetDomain || 'general',
     version: (state.goal?.version || 0) + 1,
     createdAt: new Date().toISOString(),
   };
-  state.goalChanged = false;
+  state.goalChanged = true;
   state.updatedAt = new Date().toISOString();
 
   res.json({ state, nextAction: route(state) });
 });
 
-// 4. Regenerate daily plan deterministically based on priority rules
+// 4. Regenerate daily plan deterministically based on priority rules & learner goals/interests
 app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
   const learnerId = req.params.learner_id;
   const state = getOrCreateLearner(learnerId);
@@ -195,7 +257,7 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
   const newItems: PlanItem[] = [];
   const now = new Date();
 
-  // 1. Check review due items
+  // 1. Check review due items (SM-2 / Spaced repetition highest priority)
   for (const [conceptId, mastery] of Object.entries(state.mastery)) {
     if (isConceptReviewDue(mastery.nextReviewAt, now)) {
       const concept = HSK1_CONCEPTS.find((c) => c.conceptId === conceptId);
@@ -203,7 +265,7 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
         id: `item-${Date.now()}-${conceptId}`,
         conceptId,
         kind: 'review',
-        objective: `Review ${concept?.titleEn || conceptId} to strengthen memory retention`,
+        objective: `Review ${concept?.titleEn || conceptId} to reinforce retention`,
         estimatedMinutes: concept?.estimatedMinutes || 6,
         completed: false,
       });
@@ -229,16 +291,55 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
   }
 
   // 3. Find next unstudied or low-mastery concepts
-  for (const concept of HSK1_CONCEPTS) {
+  // Strict Pedagogical Priority Mandate:
+  // MUST (Core Grammar) + Priority Themes (matching user targetDomain & interests) > General Knowledge > Other Themes
+  const userInterests: CurriculumTheme[] = state.goal?.interests || [];
+  const targetDomain = state.goal?.targetDomain || 'general';
+
+  const getPriorityWeight = (concept: typeof HSK1_CONCEPTS[0]): number => {
+    let weight = 0;
+    const isPriorityTheme = userInterests.includes(concept.theme) || (targetDomain !== 'general' && (concept.tags.includes(targetDomain) || concept.theme === `${targetDomain}_directions` || concept.theme === `${targetDomain}_food` || concept.theme === `${targetDomain}_study`));
+
+    if (concept.isCoreGrammar || concept.category === 'grammar') {
+      // Must-have foundation
+      weight += 1000;
+    }
+    if (isPriorityTheme) {
+      // User's specific scenario interest (e.g. Travel, Work, Dining)
+      weight += 800;
+    } else if (concept.category === 'general_knowledge') {
+      // Useful everyday tools (dates, numbers, clock time, money, measure words)
+      weight += 400;
+    } else {
+      // Other non-priority scenarios
+      weight += 100;
+    }
+    return weight;
+  };
+
+  const candidateConcepts = [...HSK1_CONCEPTS].sort((a, b) => {
+    const weightA = getPriorityWeight(a);
+    const weightB = getPriorityWeight(b);
+
+    if (weightA !== weightB) {
+      return weightB - weightA; // Higher weight first
+    }
+
+    // Within same priority tier, maintain pedagogical sequence
+    return a.sequenceNo - b.sequenceNo;
+  });
+
+  for (const concept of candidateConcepts) {
     if (newItems.length >= 4) break;
     const mastery = state.mastery[concept.conceptId];
     if (!mastery || mastery.masteryScore < 0.7) {
       if (!newItems.some((it) => it.conceptId === concept.conceptId)) {
+        const isInterestMatch = userInterests.includes(concept.theme) || (targetDomain !== 'general' && concept.tags.includes(targetDomain));
         newItems.push({
           id: `item-${Date.now()}-${concept.conceptId}`,
           conceptId: concept.conceptId,
           kind: mastery ? 'remedial' : 'new',
-          objective: `${mastery ? 'Strengthen' : 'Learn'} ${concept.titleEn} (${concept.communicativeGoal})`,
+          objective: `${isInterestMatch ? '🎯 ' : ''}${mastery ? 'Strengthen' : 'Learn'} ${concept.titleEn} (${concept.communicativeGoal})`,
           estimatedMinutes: concept.estimatedMinutes,
           completed: false,
         });
@@ -258,15 +359,17 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
     });
   }
 
+  const focusLabel = targetDomain !== 'general' ? ` [Focus: ${targetDomain.toUpperCase()}]` : '';
   state.activePlan = {
     id: `plan-${Date.now()}`,
     learnerId,
     date: now.toISOString(),
     status: 'active',
     items: newItems,
-    rationale: `Adaptive schedule generated based on ${newItems.filter((i) => i.kind === 'review').length} due reviews, ${newItems.filter((i) => i.kind === 'remedial').length} remedial targets, and ${newItems.filter((i) => i.kind === 'new').length} new concepts.`,
+    rationale: `Adaptive schedule${focusLabel} generated with ${newItems.filter((i) => i.kind === 'review').length} due reviews, ${newItems.filter((i) => i.kind === 'remedial').length} remedial targets, and ${newItems.filter((i) => i.kind === 'new').length} priority concepts.`,
     generatedAt: now.toISOString(),
   };
+  state.goalChanged = false;
   state.updatedAt = now.toISOString();
 
   res.json({ plan: state.activePlan, state, nextAction: route(state) });
@@ -341,6 +444,29 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
     if (item && gradingResult.passedGates) {
       item.completed = true;
     }
+  }
+
+  // Record real learner session for today upon completing exercises
+  if (!state.sessions) {
+    state.sessions = [];
+  }
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const todaySession = state.sessions.find((s) => s.startedAt && s.startedAt.startsWith(todayStr));
+  if (todaySession) {
+    if (!todaySession.conceptsCovered.includes(conceptId)) {
+      todaySession.conceptsCovered.push(conceptId);
+    }
+    const currentEnd = new Date(todaySession.endedAt).getTime();
+    todaySession.endedAt = new Date(Math.max(now.getTime(), currentEnd + 3 * 60 * 1000)).toISOString();
+  } else {
+    state.sessions.push({
+      sessionId: `sess-${Date.now()}`,
+      startedAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+      endedAt: now.toISOString(),
+      conceptsCovered: [conceptId],
+      summary: `Practice session covering ${conceptId}`,
+    });
   }
 
   state.updatedAt = new Date().toISOString();

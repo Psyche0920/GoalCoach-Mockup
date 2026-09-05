@@ -78,6 +78,13 @@ export function App() {
         const data = await res.json();
         setLearnerState(data.state);
         setNextAction(data.nextAction);
+        // Immediately regenerate plan to adapt to new target domain / interests
+        const planRes = await fetch(`/api/v1/learners/${learnerId}/plan`, { method: 'POST' });
+        if (planRes.ok) {
+          const planData = await planRes.json();
+          setLearnerState(planData.state);
+          setNextAction(planData.nextAction);
+        }
       }
     } catch (err) {
       console.error('Failed to update goal:', err);
@@ -186,6 +193,7 @@ export function App() {
       {selectedStudyConceptId && (
         <DuolingoExerciseModal
           conceptId={selectedStudyConceptId}
+          targetDomain={learnerState?.goal?.targetDomain || 'general'}
           onClose={() => setSelectedStudyConceptId(null)}
           onSubmitAnswer={handleSubmitAnswer}
         />

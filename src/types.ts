@@ -4,12 +4,28 @@ export type PlanItemKind = 'review' | 'remedial' | 'new';
 export type PlanStatus = 'active' | 'exhausted' | 'invalid';
 export type NextAction = 'plan_goal' | 'plan_review' | 'regenerate_plan' | 'teach';
 
+export type ConceptCategory = 'grammar' | 'general_knowledge' | 'scenario';
+
+export type CurriculumTheme =
+  | 'core_grammar'
+  | 'greetings_etiquette'
+  | 'identity_family'
+  | 'numbers_time'
+  | 'dining_food'
+  | 'shopping_prices'
+  | 'travel_directions'
+  | 'daily_life'
+  | 'work_study'
+  | 'weather_feelings';
+
 export interface LearningGoal {
   id: string;
   title: string;
   targetHskLevel: number; // 1 to 6
   targetDate?: string;
   dailyAvailableMinutes: number;
+  interests?: CurriculumTheme[];
+  targetDomain?: 'general' | 'travel' | 'dining' | 'work' | 'daily';
   version: number;
   createdAt: string;
 }
@@ -67,6 +83,8 @@ export interface Exercise {
   conceptId: string;
   exerciseOrder: number;
   exerciseType: ExerciseType;
+  theme?: CurriculumTheme;
+  tags?: string[];
   prompt: string;
   promptPinyin?: string;
   instruction: string;
@@ -84,7 +102,10 @@ export interface TeachingCard {
   id: number;
   conceptId: string;
   cardOrder: number;
-  cardType: 'goal' | 'vocab' | 'grammar' | 'example' | 'tip' | 'mini_dialogue';
+  cardType: 'goal' | 'vocab' | 'grammar' | 'example' | 'tip' | 'mini_dialogue' | 'communication' | 'mixed';
+  category?: ConceptCategory;
+  theme?: CurriculumTheme;
+  tags?: string[];
   promptZh?: string;
   pinyin?: string;
   meaningEn?: string;
@@ -93,6 +114,7 @@ export interface TeachingCard {
   examplePinyin?: string;
   exampleEn?: string;
   payload?: Record<string, any>;
+  tailoredVariants?: Record<string, { exampleZh: string; examplePinyin: string; exampleEn: string; explanationEn?: string }>;
 }
 
 export interface CurriculumConcept {
@@ -103,11 +125,17 @@ export interface CurriculumConcept {
   titleZh: string;
   titleEn: string;
   conceptType: 'communication' | 'grammar' | 'vocabulary' | 'mixed';
+  category: ConceptCategory;
+  module: 'module1_grammar' | 'module2_vocabulary';
+  theme: CurriculumTheme;
+  tags: string[];
+  isCoreGrammar: boolean;
   communicativeGoal: string;
   grammarFocus: string[];
   vocabularyFocus: string[];
   difficulty: number;
   estimatedMinutes: number;
+  tailoredExamples?: Record<string, { zh: string; pinyin: string; en: string }>;
 }
 
 export interface AnswerSubmission {

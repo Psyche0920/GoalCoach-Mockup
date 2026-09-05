@@ -7,20 +7,102 @@ import {
   Sparkles, 
   HelpCircle,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw,
+  BookOpen,
+  Layers
 } from 'lucide-react';
 import { PandaMascot } from './PandaMascot.tsx';
 import { GoalCoachLogo } from './GoalCoachLogo.tsx';
 import { CurriculumConcept, TeachingCard, Exercise, GradingResult } from '../types.ts';
+import { THEME_REGISTRY } from '../data/curriculumThemes.ts';
+import { getTailoredExample } from '../utils/tailoredExamples.ts';
+import { CharacterEntry, findCharacterBreakdown } from '../data/characterRadicals.ts';
+import { CharacterDecompositionModal } from './CharacterDecompositionModal.tsx';
+import { audioFeedback } from '../utils/audioFeedback.ts';
 
 interface DuolingoExerciseModalProps {
   conceptId: string;
+  targetDomain?: string;
   onClose: () => void;
   onSubmitAnswer: (exerciseId: string, answer: string) => Promise<GradingResult | null>;
 }
 
+// Helper to extract the complete full target sentence in Chinese (not just a single word or answer token)
+const getFullTargetSentenceZh = (ex?: Exercise | null): string => {
+  if (!ex) return '';
+
+  // 1. Fill-in-the-blank: substitute answer into prompt to produce the full sentence
+  if (ex.exerciseType === 'fill_blank') {
+    let ans = ex.acceptedAnswers?.[0] || ex.answer || '';
+    if (ans.startsWith('[') && ans.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(ans);
+        if (Array.isArray(parsed)) ans = parsed.join('');
+      } catch {}
+    }
+    ans = ans.replace(/[\p{P}\p{S}]+/gu, '').trim();
+
+    if (/[\u4e00-\u9fa5]/.test(ex.prompt)) {
+      const filled = ex.prompt.replace(/_{2,}/g, ans);
+      // If there are multiple dialogue lines, take the target response line
+      const lines = filled.split('\n');
+      const targetLine = lines.find(l => l.includes(ans)) || lines[lines.length - 1] || filled;
+      return targetLine.replace(/^[AB][:：]\s*/gm, '').replace(/（[^）]+）|\([^)]+\)/g, '').trim();
+    }
+    return ans;
+  }
+
+  // 2. Meaning MCQ: prompt contains the full Chinese word or sentence
+  if (ex.exerciseType === 'meaning_mcq') {
+    if (/[\u4e00-\u9fa5]/.test(ex.prompt)) {
+      return ex.prompt.replace(/^[AB][:：]\s*/gm, '').replace(/（[^）]+）|\([^)]+\)/g, '').trim();
+    }
+  }
+
+  // 3. Reorder or Translation: acceptedAnswers or answer is the full assembled sentence
+  let raw = ex.acceptedAnswers?.find(a => /[\u4e00-\u9fa5]/.test(a)) || ex.acceptedAnswers?.[0] || ex.answer || '';
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) raw = parsed.join('');
+    } catch {}
+  }
+  // Strip inner spaces between Chinese tokens
+  raw = raw.replace(/\s+/g, '');
+  if (/[\u4e00-\u9fa5]/.test(raw)) {
+    return raw.trim();
+  }
+
+  // Fallback to prompt if prompt contains Chinese
+  if (/[\u4e00-\u9fa5]/.test(ex.prompt)) {
+    return ex.prompt.replace(/^[AB][:：]\s*/gm, '').replace(/_{2,}/g, '').trim();
+  }
+
+  return raw;
+};
+
+// Helper to get pronounceable Chinese text for the exercise prompt
+const getPromptAudioText = (ex?: Exercise | null): string => {
+  if (!ex) return '';
+  if (/[\u4e00-\u9fa5]/.test(ex.prompt)) {
+    // Prompt has Chinese: strip blank underscores for clean reading
+    return ex.prompt.replace(/_{2,}/g, '');
+  }
+  // English prompt: speak the complete target Chinese sentence
+  return getFullTargetSentenceZh(ex);
+};
+
+// Global Distractor pool for building dynamic Word Banks without manual typing
+const COMMON_DISTRACTOR_TOKENS = [
+  '我', '你', '他', '她', '是', '不', '很', '好', '老师', '学生', 
+  '中国', '美国', '吃', '喝', '茶', '水', '买', '多少钱', '块', 
+  '去', '火车站', '想', '在', '有', '没有', '客气', '谢谢', '对不起', '大'
+];
+
 export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
   conceptId,
+  targetDomain = 'general',
   onClose,
   onSubmitAnswer,
 }) => {
@@ -36,23 +118,19 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
 
   // Input states
   const [selectedOption, setSelectedOption] = useState<string>('');
-  const [textInput, setTextInput] = useState<string>('');
-  const [reorderTokens, setReorderTokens] = useState<string[]>([]);
-  const [availableTokens, setAvailableTokens] = useState<string[]>([]);
+  const [slotTokens, setSlotTokens] = useState<string[]>([]);
+  const [wordBankTokens, setWordBankTokens] = useState<{ id: string; text: string }[]>([]);
 
   // Evaluation
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [gradingResult, setGradingResult] = useState<GradingResult | null>(null);
 
-  // Audio Pronunciation using Web Speech API
+  // Character Radical Inspector Modal state (Image 1 feature)
+  const [inspectedEntry, setInspectedEntry] = useState<CharacterEntry | null>(null);
+
+  // Audio Pronunciation using audioFeedback utility
   const playAudio = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.rate = 0.85;
-      window.speechSynthesis.speak(utterance);
-    }
+    audioFeedback.speakChinese(text);
   };
 
   useEffect(() => {
@@ -76,42 +154,128 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
 
   const currentExercise = exercises[currentExerciseIndex];
 
+  // Helper to initialize interactive word bank for the current exercise
   useEffect(() => {
     setSelectedOption('');
-    setTextInput('');
+    setSlotTokens([]);
     setGradingResult(null);
 
-    if (currentExercise && currentExercise.exerciseType === 'reorder') {
-      const tokens = currentExercise.options || currentExercise.prompt.split('/').map((s) => s.trim());
-      setAvailableTokens([...tokens]);
-      setReorderTokens([]);
+    if (!currentExercise) return;
+
+    // Check if exercise uses Word Bank (reorder, fill_blank, translate, or no options)
+    const needsWordBank = 
+      currentExercise.exerciseType === 'reorder' ||
+      currentExercise.exerciseType === 'fill_blank' ||
+      currentExercise.exerciseType === 'translate_to_zh' ||
+      !currentExercise.options ||
+      currentExercise.options.length === 0;
+
+    if (needsWordBank) {
+      let coreTokens: string[] = [];
+
+      if (currentExercise.options && currentExercise.options.length > 0) {
+        coreTokens = [...currentExercise.options];
+      } else {
+        // Derive tokens from target answer
+        const rawAns = currentExercise.acceptedAnswers?.[0] || currentExercise.answer || '';
+        // If JSON array
+        if (rawAns.startsWith('[') && rawAns.endsWith(']')) {
+          try {
+            coreTokens = JSON.parse(rawAns);
+          } catch {
+            coreTokens = [rawAns];
+          }
+        } else {
+          // Tokenize Chinese characters / words
+          // If short word like "客气", keep it whole
+          if (rawAns.length <= 3) {
+            coreTokens = [rawAns];
+          } else {
+            // Split into 1-2 char chunks
+            const chars = rawAns.split('');
+            coreTokens = chars;
+          }
+        }
+
+        // Add 2-3 random distractors from vocabulary focus or common pool
+        const availableDistractors = (concept?.vocabularyFocus || [])
+          .concat(COMMON_DISTRACTOR_TOKENS)
+          .filter((t) => !coreTokens.includes(t) && t.length > 0);
+
+        // Pick 2-3 distractors
+        const picked = availableDistractors.slice(0, 3);
+        coreTokens = [...coreTokens, ...picked];
+      }
+
+      // Shuffle tokens
+      const shuffled = coreTokens
+        .map((t, idx) => ({ id: `token-${t}-${idx}-${Math.random()}`, text: t }))
+        .sort(() => Math.random() - 0.5);
+
+      setWordBankTokens(shuffled);
     }
-  }, [currentExerciseIndex, currentExercise]);
+  }, [currentExerciseIndex, currentExercise, concept]);
 
-  const handleAddToken = (token: string, index: number) => {
-    setReorderTokens([...reorderTokens, token]);
-    const newAvail = [...availableTokens];
-    newAvail.splice(index, 1);
-    setAvailableTokens(newAvail);
+  // Click word in word bank to add to slots (点什么发什么音)
+  const handleBankTokenClick = (tokenId: string, text: string) => {
+    if (gradingResult) return;
+    audioFeedback.playPopSound();
+    audioFeedback.speakChinese(text);
+    setSlotTokens([...slotTokens, text]);
+    setWordBankTokens(wordBankTokens.filter((t) => t.id !== tokenId));
   };
 
-  const handleRemoveToken = (token: string, index: number) => {
-    setAvailableTokens([...availableTokens, token]);
-    const newReorder = [...reorderTokens];
-    newReorder.splice(index, 1);
-    setReorderTokens(newReorder);
+  // Click token in slot to return it to word bank (退回也点什么发什么音)
+  const handleSlotTokenClick = (index: number, text: string) => {
+    if (gradingResult) return;
+    audioFeedback.playPopSound();
+    audioFeedback.speakChinese(text);
+    const newSlots = [...slotTokens];
+    newSlots.splice(index, 1);
+    setSlotTokens(newSlots);
+    setWordBankTokens([...wordBankTokens, { id: `token-return-${Date.now()}-${Math.random()}`, text }]);
   };
 
+  // Clear all slotted tokens
+  const handleResetSlots = () => {
+    if (gradingResult) return;
+    audioFeedback.playPopSound();
+    const returned = slotTokens.map((t) => ({ id: `token-reset-${Math.random()}`, text: t }));
+    setWordBankTokens([...wordBankTokens, ...returned]);
+    setSlotTokens([]);
+  };
+
+  // Click option card in MCQ
+  const handleOptionClick = (opt: string) => {
+    if (gradingResult) return;
+    setSelectedOption(opt);
+    audioFeedback.playPopSound();
+    // 仅当选项为中文时才发音，英文选项点击时不发音
+    if (/[\u4e00-\u9fa5]/.test(opt)) {
+      audioFeedback.speakChinese(opt);
+    }
+  };
+
+  // Inspect character radicals (Image 1 Feature)
+  const handleInspectCharacter = (text: string) => {
+    const entry = findCharacterBreakdown(text);
+    if (entry) {
+      setInspectedEntry(entry);
+    }
+  };
+
+  // Submit Answer & Play Grading Sound & Pronounce Full Correct Sentence
   const handleSubmit = async () => {
     if (!currentExercise) return;
     let answerToSubmit = '';
 
-    if (currentExercise.exerciseType === 'reorder') {
-      answerToSubmit = reorderTokens.join('');
-    } else if (currentExercise.options && currentExercise.options.length > 0) {
+    const isMultipleChoice = currentExercise.options && currentExercise.options.length > 0 && currentExercise.exerciseType !== 'reorder' && currentExercise.exerciseType !== 'fill_blank';
+
+    if (isMultipleChoice) {
       answerToSubmit = selectedOption;
     } else {
-      answerToSubmit = textInput.trim();
+      // From slotted tokens
+      answerToSubmit = slotTokens.join('');
     }
 
     if (!answerToSubmit) return;
@@ -121,53 +285,121 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
       const result = await onSubmitAnswer(currentExercise.id, answerToSubmit);
       if (result) {
         setGradingResult(result);
+
+        // 获取完整正确句子（保证完整朗读全句，而非单纯重复单一字词）
+        const fullCorrectSentence = getFullTargetSentenceZh(currentExercise);
+
+        // 成功发出成功提示音，失败发出失败提示音，然后再完整朗读正确答案的完整句子（女声模型，无标点符号发音）
+        audioFeedback.playGradingFeedbackAndSentence(result.passedGates, fullCorrectSentence);
       }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleClose = () => {
+    audioFeedback.stopSpeech();
+    onClose();
+  };
+
   const handleNextExercise = () => {
+    // 切换进入下一题时停止上一题的发音
+    audioFeedback.stopSpeech();
     setGradingResult(null);
     if (currentExerciseIndex < exercises.length - 1) {
       setCurrentExerciseIndex(currentExerciseIndex + 1);
     } else {
-      onClose();
+      handleClose();
     }
   };
 
+  // Progress computation
+  const totalSteps = cards.length + exercises.length;
+  const currentStep = phase === 'card' ? currentCardIndex : cards.length + currentExerciseIndex;
+  const progressPercent = totalSteps > 0 ? Math.round(((currentStep + 1) / totalSteps) * 100) : 0;
+
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/60 backdrop-blur-xs p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center border-4 border-zinc-950 shadow-[0_8px_0_#18181b]">
-          <PandaMascot mood="thinking" size={80} className="mx-auto mb-4" />
-          <div className="text-base font-black text-zinc-950">Getting lesson ready...</div>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center space-y-4 shadow-2xl border-2 border-zinc-950">
+          <div className="w-12 h-12 border-4 border-zinc-950 border-t-emerald-500 rounded-full animate-spin mx-auto" />
+          <h3 className="font-black text-lg text-zinc-950">Preparing Interactive Lesson...</h3>
+          <p className="text-xs text-zinc-500 font-bold">Loading HelloChinese radical components & word bank</p>
         </div>
       </div>
     );
   }
 
-  // Calculate progress percentage
-  const totalSteps = exercises.length || 1;
-  const progressPercent = Math.round(((currentExerciseIndex + (gradingResult ? 1 : 0)) / totalSteps) * 100);
-
   const activeCard = cards[currentCardIndex];
 
+  // Helper to render Chinese sentence with clickable character radicals (Image 1 & 2 Feature)
+  // 点什么发什么音，点击汉字朗读发音并查看偏旁
+  const renderInteractiveChineseText = (text: string, className = "text-2xl font-black font-chinese text-zinc-950") => {
+    // Break into characters and punctuation
+    const chars = text.split(/([^\u4e00-\u9fa5]+)/).filter(Boolean);
+
+    return (
+      <div className={`flex items-center flex-wrap gap-1.5 ${className}`}>
+        {chars.map((segment, idx) => {
+          const isChinese = /[\u4e00-\u9fa5]/.test(segment);
+          if (!isChinese) {
+            return <span key={idx} className="text-zinc-500 font-medium">{segment}</span>;
+          }
+
+          // Check if this word or character has radical breakdown
+          const breakdown = findCharacterBreakdown(segment);
+
+          return (
+            <span
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();
+                // 点什么发什么音
+                audioFeedback.playPopSound();
+                audioFeedback.speakChinese(segment);
+                if (breakdown) {
+                  setInspectedEntry(breakdown);
+                }
+              }}
+              className={`
+                relative inline-block transition-all select-none
+                ${breakdown ? 'border-b-2 border-dashed border-indigo-500 text-indigo-950 hover:bg-indigo-100/60 rounded px-1 cursor-pointer' : 'hover:bg-zinc-100 rounded px-1 cursor-pointer'}
+              `}
+              title={breakdown ? '点击朗读发音并查看汉字偏旁部首树形拆解' : '点击朗读汉字发音'}
+            >
+              {segment}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const isCurrentExerciseMCQ = currentExercise?.options && currentExercise.options.length > 0 && currentExercise.exerciseType !== 'reorder' && currentExercise.exerciseType !== 'fill_blank';
+
+  const isCheckReady = isCurrentExerciseMCQ ? Boolean(selectedOption) : slotTokens.length > 0;
+
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col justify-between select-none overflow-y-auto">
-      {/* Top Header with Duolingo-style Green Progress Bar */}
+    <div className="fixed inset-0 bg-white z-50 flex flex-col justify-between overflow-y-auto select-none">
+      {/* 1. Header (HelloChinese Style Top Navigation) */}
       <header className="px-4 sm:px-8 py-3.5 border-b-2 border-zinc-200 flex items-center gap-4 max-w-3xl mx-auto w-full">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="text-zinc-400 hover:text-zinc-800 p-1.5 rounded-xl transition-colors cursor-pointer"
+          title="退出练习"
         >
           <X className="w-5 h-5 stroke-[3]" />
         </button>
 
-        <GoalCoachLogo size="sm" showSubtitle={false} className="shrink-0" />
+        {/* Clean Top Tag */}
+        <div className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+          {phase === 'card' 
+            ? (concept?.isCoreGrammar ? '核心语法' : '生词学习') 
+            : '练习'}
+        </div>
 
         {/* Progress Bar Container */}
-        <div className="flex-1 bg-zinc-100 h-3.5 rounded-full overflow-hidden p-0.5 border border-zinc-200">
+        <div className="flex-1 bg-zinc-100 h-3 rounded-full overflow-hidden p-0.5 border border-zinc-200">
           <div
             className="bg-emerald-500 h-full rounded-full transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
@@ -175,35 +407,43 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
         </div>
 
         <div className="text-xs font-black uppercase text-zinc-500 tracking-wider">
-          {currentExerciseIndex + 1}/{totalSteps}
+          {currentStep + 1}/{totalSteps}
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* 2. Main Container */}
       <main className="flex-1 max-w-2xl mx-auto w-full p-4 sm:p-8 flex flex-col justify-center">
         {phase === 'card' && activeCard ? (
-          /* Teaching Cards Phase (Matching Screen 4: New Word / Grammar) */
+          /* ======================================================== */
+          /* Teaching Cards Phase (HelloChinese Teaching Card)         */
+          /* ======================================================== */
           <div className="space-y-6">
             <div className="flex items-center gap-4">
               <PandaMascot mood="idle" size={72} />
-              <div>
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-600">
-                  Concept Guide • Card {currentCardIndex + 1} of {cards.length}
-                </span>
-                <div className="flex items-center gap-3">
-                  <h2 className="text-2xl sm:text-3xl font-black text-zinc-950 font-chinese">
-                    {activeCard.promptZh || concept?.titleZh}
-                  </h2>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-500">
+                    第 {currentCardIndex + 1} / {cards.length} 页
+                  </span>
+                </div>
+
+                {/* Pronunciation & Interactive Chinese Text */}
+                <div className="flex items-center gap-3 pt-1">
                   <button
                     onClick={() => playAudio(activeCard.promptZh || concept?.titleZh || '')}
-                    className="p-2 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-colors cursor-pointer"
-                    title="Pronounce Chinese"
+                    className="p-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_3px_0_#059669] transition-all cursor-pointer"
+                    title="发音"
                   >
-                    <Volume2 className="w-4 h-4 stroke-[2.5]" />
+                    <Volume2 className="w-5 h-5 stroke-[2.5]" />
                   </button>
+                  {renderInteractiveChineseText(
+                    activeCard.promptZh || concept?.titleZh || '', 
+                    'text-3xl font-black font-chinese text-zinc-950'
+                  )}
                 </div>
+
                 {activeCard.pinyin && (
-                  <p className="text-sm font-mono font-bold text-emerald-600 mt-0.5">
+                  <p className="text-sm font-mono font-black text-emerald-700 mt-0.5">
                     {activeCard.pinyin}
                   </p>
                 )}
@@ -216,106 +456,127 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                 {activeCard.explanationEn}
               </div>
 
-              {activeCard.exampleZh && (
-                <div className="bg-emerald-50 rounded-2xl p-4 border-2 border-emerald-500 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase text-emerald-800">Example</span>
-                    <button
-                      onClick={() => playAudio(activeCard.exampleZh || '')}
-                      className="text-emerald-700 hover:text-emerald-900 flex items-center gap-1 text-xs font-bold cursor-pointer"
-                    >
-                      <Volume2 className="w-3.5 h-3.5" />
-                      Listen
-                    </button>
-                  </div>
-                  <div className="font-chinese text-lg font-black text-zinc-950">
-                    {activeCard.exampleZh}
-                  </div>
-                  {activeCard.examplePinyin && (
-                    <div className="text-xs font-mono text-emerald-700 font-bold">
-                      {activeCard.examplePinyin}
+              {(() => {
+                const tailored = getTailoredExample(concept || undefined, activeCard, targetDomain);
+                return (
+                  <div className="bg-emerald-50 rounded-2xl p-4 border-2 border-emerald-500 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-emerald-800 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        {tailored.scenarioTag}
+                      </span>
+                      <button
+                        onClick={() => playAudio(tailored.zh)}
+                        className="text-emerald-700 hover:text-emerald-900 flex items-center gap-1 text-xs font-bold cursor-pointer"
+                        title="朗读定制例句"
+                      >
+                        <Volume2 className="w-3.5 h-3.5" />
+                        朗读
+                      </button>
                     </div>
-                  )}
-                  <div className="text-xs font-bold text-zinc-600 italic">
-                    {activeCard.exampleEn}
+
+                    {renderInteractiveChineseText(tailored.zh, 'text-xl font-black font-chinese text-zinc-950')}
+
+                    {tailored.pinyin && (
+                      <div className="text-xs font-mono text-emerald-700 font-bold">
+                        {tailored.pinyin}
+                      </div>
+                    )}
+                    <div className="text-xs font-bold text-zinc-600 italic">
+                      {tailored.en}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Card Navigation */}
-            <div className="flex justify-end pt-4">
-              {currentCardIndex < cards.length - 1 ? (
-                <button
-                  onClick={() => setCurrentCardIndex(currentCardIndex + 1)}
-                  className="px-6 py-3 bg-zinc-900 hover:bg-zinc-800 text-white rounded-2xl font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#09090b] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
-                >
-                  Next Card
-                </button>
-              ) : (
-                <button
-                  onClick={() => setPhase('practice')}
-                  className="px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-2xl font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#15803d] active:translate-y-0.5 active:shadow-none transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <span>Start Practice</span>
-                  <ArrowRight className="w-4 h-4 stroke-[3]" />
-                </button>
-              )}
+            <div className="flex justify-end pt-2">
+              <button
+                id="btn-card-next"
+                onClick={() => {
+                  if (currentCardIndex < cards.length - 1) {
+                    setCurrentCardIndex(currentCardIndex + 1);
+                  } else {
+                    setPhase('practice');
+                  }
+                }}
+                className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#15803d] flex items-center gap-2 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+              >
+                <span>{currentCardIndex < cards.length - 1 ? '下一页' : '开始练习'}</span>
+                <ArrowRight className="w-4 h-4 stroke-[3]" />
+              </button>
             </div>
           </div>
         ) : (
-          /* Practice Exercise Phase */
+          /* ======================================================== */
+          /* Practice Phase (Zero-typing Word Bank & Visual Cards)     */
+          /* ======================================================== */
           currentExercise && (
             <div className="space-y-6">
-              <div className="flex items-start gap-4">
-                <PandaMascot mood={gradingResult ? (gradingResult.passedGates ? 'happy' : 'thinking') : 'idle'} size={72} />
-                <div className="space-y-1 flex-1">
-                  <h3 className="text-base sm:text-lg font-black text-zinc-950">
-                    {currentExercise.instruction}
-                  </h3>
-                  {currentExercise.promptPinyin && (
-                    <div className="text-xs font-mono font-bold text-emerald-600">
-                      {currentExercise.promptPinyin}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <div className="font-chinese text-2xl font-black text-zinc-900">
-                      {currentExercise.prompt}
-                    </div>
-                    {/* Speaker button if prompt has Chinese */}
-                    {/[\u4e00-\u9fa5]/.test(currentExercise.prompt) && (
-                      <button
-                        onClick={() => playAudio(currentExercise.prompt)}
-                        className="p-1.5 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-800 cursor-pointer transition-colors"
-                        title="Pronounce"
-                      >
-                        <Volume2 className="w-4 h-4" />
-                      </button>
+              {/* Exercise Header & Instruction */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-black text-zinc-950">
+                  {currentExercise.instruction}
+                </h3>
+
+                {/* Prompt Card with Audio Speaker & Clickable Radicals */}
+                <div className="bg-zinc-50 rounded-2xl p-4 border-2 border-zinc-200 flex items-center gap-4">
+                  {/* Speaker Button */}
+                  <button
+                    onClick={() => audioFeedback.speakChinese(getPromptAudioText(currentExercise))}
+                    className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_3px_0_#059669] shrink-0 cursor-pointer"
+                    title="朗读"
+                  >
+                    <Volume2 className="w-5 h-5 stroke-[2.5]" />
+                  </button>
+
+                  <div className="space-y-1">
+                    {currentExercise.promptPinyin && (
+                      <div className="text-xs font-mono font-bold text-emerald-600">
+                        {currentExercise.promptPinyin}
+                      </div>
                     )}
+                    {renderInteractiveChineseText(currentExercise.prompt, 'text-2xl font-black font-chinese text-zinc-950')}
                   </div>
                 </div>
               </div>
 
-              {/* Interaction Modes */}
+              {/* Interaction Modes (100% Click-based, No Manual Typing!) */}
               {!gradingResult && (
-                <div className="space-y-4 pt-4">
-                  {/* Multiple Choice Cards */}
-                  {currentExercise.options && currentExercise.options.length > 0 && currentExercise.exerciseType !== 'reorder' && (
+                <div className="space-y-5 pt-2">
+                  {/* Mode A: Visual Cards / Multiple Choice (Matching Image 1) */}
+                  {isCurrentExerciseMCQ && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {currentExercise.options.map((opt) => {
+                      {currentExercise.options?.map((opt) => {
                         const isSelected = selectedOption === opt;
+                        // Give visual icon hints based on common vocab
+                        let icon = '📖';
+                        if (opt.includes('Teacher') || opt.includes('老师')) icon = '👩‍🏫';
+                        else if (opt.includes('Student') || opt.includes('学生')) icon = '🧑‍🎓';
+                        else if (opt.includes('America') || opt.includes('美国')) icon = '🗽';
+                        else if (opt.includes('China') || opt.includes('中国')) icon = '🏮';
+                        else if (opt.includes('Tea') || opt.includes('茶')) icon = '🍵';
+                        else if (opt.includes('Water') || opt.includes('水')) icon = '💧';
+                        else if (opt.includes('Eat') || opt.includes('吃')) icon = '🥢';
+                        else if (opt.includes('Drink') || opt.includes('喝')) icon = '🥤';
+                        else if (opt.includes('Hello') || opt.includes('你好')) icon = '👋';
+
                         return (
                           <button
                             key={opt}
                             id={`btn-opt-${opt}`}
-                            onClick={() => setSelectedOption(opt)}
+                            onClick={() => handleOptionClick(opt)}
                             className={`p-4 rounded-2xl border-2 text-left font-black transition-all flex items-center justify-between cursor-pointer ${
                               isSelected
-                                ? 'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-[0_4px_0_#15803d] translate-y-0'
-                                : 'bg-white border-zinc-200 text-zinc-900 hover:bg-zinc-50 shadow-[0_4px_0_#e4e4e7] active:translate-y-1 active:shadow-none'
+                                ? 'bg-emerald-50 border-emerald-600 text-emerald-950 shadow-[0_4px_0_#059669] -translate-y-0.5'
+                                : 'bg-white border-zinc-300 text-zinc-900 hover:bg-zinc-50 shadow-[0_4px_0_#d4d4d8] active:translate-y-1 active:shadow-none'
                             }`}
                           >
-                            <span className="font-chinese text-base">{opt}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{icon}</span>
+                              <span className="font-chinese text-base">{opt}</span>
+                            </div>
                             <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                               isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-300'
                             }`}>
@@ -327,57 +588,54 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                     </div>
                   )}
 
-                  {/* Sentence Reordering Interaction */}
-                  {currentExercise.exerciseType === 'reorder' && (
+                  {/* Mode B: Word Bank Pill Tap-to-Fill (Matching Image 2 Complete the Translation) */}
+                  {!isCurrentExerciseMCQ && (
                     <div className="space-y-4">
-                      {/* Target Drop Zone */}
-                      <div className="min-h-[72px] p-3 rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50 flex flex-wrap gap-2 items-center">
-                        {reorderTokens.length === 0 ? (
-                          <span className="text-xs font-bold text-zinc-400 pl-2">
-                            Tap words below in correct sentence order...
+                      {/* Target Answer Slot (Dashed Drop Zone) */}
+                      <div className="min-h-[84px] p-3.5 rounded-2xl border-2 border-dashed border-emerald-400 bg-emerald-50/40 flex flex-wrap gap-2.5 items-center justify-start">
+                        {slotTokens.length === 0 ? (
+                          <span className="text-sm font-medium text-zinc-400 pl-2">
+                            点击词块填入...
                           </span>
                         ) : (
-                          reorderTokens.map((tok, idx) => (
+                          slotTokens.map((tok, idx) => (
                             <button
-                              key={`${tok}-${idx}`}
-                              onClick={() => handleRemoveToken(tok, idx)}
-                              className="px-4 py-2.5 rounded-xl bg-zinc-950 text-white font-chinese text-base font-black border-2 border-zinc-950 shadow-[0_3px_0_#27272a] active:translate-y-0.5 cursor-pointer"
+                              key={`slot-${tok}-${idx}`}
+                              onClick={() => handleSlotTokenClick(idx, tok)}
+                              className="px-4 py-2.5 rounded-xl bg-zinc-950 text-white font-chinese text-lg font-black border-2 border-zinc-950 shadow-[0_3px_0_#27272a] active:translate-y-0.5 cursor-pointer hover:bg-zinc-800 transition-transform flex items-center gap-1"
+                              title="点击退回词库"
                             >
-                              {tok}
+                              <span>{tok}</span>
                             </button>
                           ))
                         )}
                       </div>
 
-                      {/* Available Word Bank */}
-                      <div className="flex flex-wrap gap-2.5 pt-2">
-                        {availableTokens.map((tok, idx) => (
+                      {/* Controls (Reset) */}
+                      {slotTokens.length > 0 && (
+                        <div className="flex justify-end">
                           <button
-                            key={`${tok}-${idx}`}
-                            onClick={() => handleAddToken(tok, idx)}
-                            className="px-4 py-2.5 rounded-xl bg-white border-2 border-zinc-300 hover:border-zinc-900 font-chinese text-base font-black text-zinc-900 shadow-[0_3px_0_#d4d4d8] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+                            onClick={handleResetSlots}
+                            className="text-xs font-bold text-zinc-500 hover:text-zinc-800 flex items-center gap-1 cursor-pointer"
                           >
-                            {tok}
+                            <RotateCcw className="w-3 h-3" />
+                            <span>重置</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Available Word Bank (Chunky 3D Pills like HelloChinese) */}
+                      <div className="flex flex-wrap gap-2.5 pt-1">
+                        {wordBankTokens.map((token) => (
+                          <button
+                            key={token.id}
+                            onClick={() => handleBankTokenClick(token.id, token.text)}
+                            className="px-4 py-2.5 rounded-xl bg-white border-2 border-zinc-300 hover:border-zinc-900 font-chinese text-lg font-black text-zinc-900 shadow-[0_3px_0_#d4d4d8] active:translate-y-1 active:shadow-none transition-all cursor-pointer hover:scale-105"
+                          >
+                            {token.text}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Free Text Input */}
-                  {(!currentExercise.options || currentExercise.options.length === 0) && currentExercise.exerciseType !== 'reorder' && (
-                    <div>
-                      <input
-                        id="duo-text-input"
-                        type="text"
-                        placeholder="Type answer in Chinese or English..."
-                        value={textInput}
-                        onChange={(e) => setTextInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSubmit();
-                        }}
-                        className="w-full text-lg font-chinese font-bold border-2 border-zinc-900 rounded-2xl px-4 py-3 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 shadow-[0_4px_0_#18181b]"
-                      />
                     </div>
                   )}
                 </div>
@@ -387,7 +645,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
         )}
       </main>
 
-      {/* Duolingo-style Bottom Drawer for Evaluation Feedback & Actions */}
+      {/* 3. Bottom Drawer for Evaluation Feedback & Big CHECK Button (Image 1 & 2 Style) */}
       <footer
         className={`px-4 sm:px-8 py-5 border-t-2 transition-colors ${
           gradingResult
@@ -407,69 +665,70 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   {gradingResult.passedGates ? <Check className="w-4 h-4 stroke-[3]" /> : <X className="w-4 h-4 stroke-[3]" />}
                 </div>
                 <span className={`font-black text-base ${gradingResult.passedGates ? 'text-emerald-900' : 'text-rose-900'}`}>
-                  {gradingResult.passedGates ? 'Correct!' : 'Correct solution:'}
+                  {gradingResult.passedGates ? '太棒了！' : '正确答案：'}
                 </span>
               </div>
 
-              {/* Target answer pronunciation if Chinese */}
+              {/* Complete target sentence pronunciation */}
               {currentExercise && (
                 <div className="flex items-center gap-2 pt-0.5">
-                  <span className="font-chinese text-sm font-black text-slate-900">
-                    {currentExercise.acceptedAnswers?.[0] || currentExercise.prompt}
+                  <span className="font-chinese text-base font-black text-slate-900">
+                    {getFullTargetSentenceZh(currentExercise)}
                   </span>
                   <button
-                    onClick={() => playAudio(currentExercise.acceptedAnswers?.[0] || currentExercise.prompt)}
-                    className="p-1 rounded-full bg-emerald-200/70 hover:bg-emerald-300 text-emerald-900 cursor-pointer"
-                    title="Pronounce"
+                    onClick={() => audioFeedback.speakChinese(getFullTargetSentenceZh(currentExercise))}
+                    className="p-1.5 rounded-full bg-emerald-200/70 hover:bg-emerald-300 text-emerald-900 cursor-pointer shadow-xs transition-colors"
+                    title="重听完整句子"
                   >
-                    <Volume2 className="w-3.5 h-3.5" />
+                    <Volume2 className="w-4 h-4" />
                   </button>
                 </div>
               )}
 
-              <p className="text-xs font-semibold leading-relaxed text-slate-700 bg-white/60 p-2.5 rounded-xl border border-emerald-200/60 max-w-lg">
-                <strong className="text-slate-900">Explanation: </strong>
+              <p className="text-xs font-medium leading-relaxed text-slate-700 bg-white/70 p-2.5 rounded-xl border border-emerald-200/60 max-w-lg">
                 {gradingResult.feedback}
               </p>
             </div>
-          ) : (
-            <div className="hidden sm:block text-xs font-bold text-zinc-400">
-              Select or construct the correct answer, then verify.
-            </div>
-          )}
+          ) : null}
 
-          {/* Action Button */}
+          {/* Action Button (Big CHECK button matching HelloChinese) */}
           {gradingResult ? (
             <button
               id="btn-duo-continue"
               onClick={handleNextExercise}
-              className={`px-8 py-3.5 rounded-2xl font-black text-sm uppercase tracking-wide border-2 border-slate-900 transition-all shrink-0 cursor-pointer ${
+              className={`w-full sm:w-auto px-10 py-4 rounded-2xl font-black text-base uppercase tracking-wider border-2 border-slate-900 transition-all shrink-0 cursor-pointer ${
                 gradingResult.passedGates
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_4px_0_#15803d]'
-                  : 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_4px_0_#9f1239]'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_5px_0_#059669]'
+                  : 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_5px_0_#9f1239]'
               } active:translate-y-1 active:shadow-none`}
             >
-              Next Exercise
+              继续
             </button>
           ) : (
             <button
               id="btn-duo-check"
-              disabled={
-                isSubmitting ||
-                (currentExercise?.exerciseType === 'reorder'
-                  ? reorderTokens.length === 0
-                  : currentExercise?.options && currentExercise.options.length > 0
-                  ? !selectedOption
-                  : !textInput.trim())
-              }
+              disabled={isSubmitting || !isCheckReady}
               onClick={handleSubmit}
-              className="px-8 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#15803d] disabled:opacity-40 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+              className={`w-full sm:w-auto px-12 py-4 rounded-2xl font-black text-base uppercase tracking-wider transition-all cursor-pointer select-none ${
+                isCheckReady && !isSubmitting
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white border-2 border-emerald-700 shadow-[0_5px_0_#059669] active:translate-y-1 active:shadow-none'
+                  : 'bg-zinc-200 text-zinc-400 border-2 border-zinc-300 cursor-not-allowed'
+              }`}
             >
-              {isSubmitting ? 'Evaluating...' : 'Check'}
+              {isSubmitting ? '评测中...' : '检查'}
             </button>
           )}
         </div>
       </footer>
+
+      {/* 4. Character Radical Decomposition Popover Modal (Image 1 Feature) */}
+      {inspectedEntry && (
+        <CharacterDecompositionModal
+          entry={inspectedEntry}
+          onClose={() => setInspectedEntry(null)}
+          onPlayAudio={playAudio}
+        />
+      )}
     </div>
   );
 };

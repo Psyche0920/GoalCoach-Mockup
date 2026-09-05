@@ -10,5 +10,7 @@ __pycache__/
 data/database2/chroma_db/*/
 dist/
 build/
+node_modules/
+bun.lock
 *.egg-info/
 .DS_Store
