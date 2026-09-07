@@ -83,6 +83,20 @@ export interface PinyinUnit {
   quizQuestions: PinyinQuizQuestion[];
 }
 
+export interface PinyinPhonemeCardItem {
+  id: string;
+  pinyin: string;
+  category: 'initial' | 'final' | 'tone' | 'syllable';
+  audioTarget?: string;
+  anchorHanzi?: string;
+  hanziPinyin?: string;
+  meaningEn?: string;
+  ipa?: string;
+  acousticTip?: string;
+  acceptableMatches?: string[];
+  exampleWords?: { hanzi: string; pinyin: string; meaningEn: string }[];
+}
+
 // 1. PINYIN SYSTEM OVERVIEW DATA
 export const PINYIN_OVERVIEW = {
   title: 'What is Pinyin?',

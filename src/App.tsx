@@ -264,6 +264,7 @@ export function App() {
           }}
           learnerState={learnerState}
           concepts={concepts}
+          onUpdateLearnerState={setLearnerState}
         />
       )}
 
