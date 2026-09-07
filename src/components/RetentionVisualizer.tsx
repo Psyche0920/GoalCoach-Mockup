@@ -27,16 +27,16 @@ import { LearnerState, CurriculumConcept } from '../types.ts';
 import { HSK1_TEACHING_CARDS_EXPANDED } from '../data/cards.ts';
 import { audioFeedback } from '../utils/audioFeedback.ts';
 
-// 精简主题关键词映射表（避免冗长，直观明了）
+// Concise theme keyword mappings
 const THEME_KEYWORDS: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  core_grammar: { label: '核心语法', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
-  greetings_etiquette: { label: '问候礼仪', bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-200' },
-  identity_family: { label: '身份人际', bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-200' },
-  dining_food: { label: '餐饮美食', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
-  shopping_numbers: { label: '数字购物', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200' },
-  time_dates: { label: '时间日程', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
-  locations_travel: { label: '方位出行', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' },
-  daily_activities: { label: '日常交际', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
+  core_grammar: { label: 'Core Grammar', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
+  greetings_etiquette: { label: 'Greetings', bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-200' },
+  identity_family: { label: 'People & Identity', bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-200' },
+  dining_food: { label: 'Dining & Food', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
+  shopping_numbers: { label: 'Shopping & Numbers', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200' },
+  time_dates: { label: 'Time & Dates', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
+  locations_travel: { label: 'Travel & Transit', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' },
+  daily_activities: { label: 'Daily Life', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
 };
 
 interface RetentionVisualizerProps {
@@ -120,9 +120,9 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
   const { dailyTrendData, totalMinutes7Days, totalCards7Days, hasActiveHistory } = useMemo(() => {
     const today = new Date();
     const data = [];
-    const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    // 汇总真实 session 记录
+    // Aggregate session logs
     const sessions = learnerState?.sessions || [];
     let sumMinutes = 0;
     let sumCards = 0;
@@ -134,7 +134,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
       const weekday = weekdayNames[targetDate.getDay()];
       const isToday = i === 0;
 
-      // 精确匹配当天时间戳区间
+      // Exact day timestamps
       const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
       const dayEnd = dayStart + 86400000;
 
@@ -153,9 +153,8 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
       sumMinutes += actualMinutes;
       sumCards += actualCards;
 
-      // 严格如实记录：未做练习的日期即为 0，绝不填充假数据
       data.push({
-        date: isToday ? `${dateKey} (今天)` : `${dateKey} ${weekday}`,
+        date: isToday ? `${dateKey} (Today)` : `${dateKey} ${weekday}`,
         shortDate: dateKey,
         minutes: actualMinutes,
         cards: actualCards,
@@ -170,7 +169,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
     };
   }, [learnerState]);
 
-  // 4. 筛选知识点
+  // 4. Filter concepts
   const filteredConcepts = useMemo(() => {
     return concepts.filter((c) => {
       const mastery = learnerState?.mastery?.[c.conceptId];
@@ -184,7 +183,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
         const q = searchQuery.toLowerCase().trim();
         const themeInfo = THEME_KEYWORDS[c.theme];
         const matchTitle = c.titleZh.toLowerCase().includes(q) || c.titleEn.toLowerCase().includes(q);
-        const matchTheme = themeInfo?.label.includes(q);
+        const matchTheme = themeInfo?.label.toLowerCase().includes(q);
         const matchTag = c.tags?.some((t) => t.toLowerCase().includes(q));
         return matchTitle || matchTheme || matchTag;
       }
@@ -195,59 +194,56 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
 
   return (
     <div className="space-y-8 select-none pb-12">
-      {/* =========================================================================
-          第一部分：综述 (Overview)
-          依据：知识点捆绑卡片的完成度
-          ========================================================================= */}
+      {/* Overview Section */}
       <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          {/* 左侧：目标完成度核心指标 */}
+          {/* Goal progress core metrics */}
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-black border border-emerald-200">
               <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>目标达成度综述</span>
+              <span>Goal Progress</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-zinc-950 tracking-tight">
-              当前已完成目标 <span className="text-emerald-600 text-3xl sm:text-4xl">{completionPercent}%</span>
+              Goal Completion <span className="text-emerald-600 text-3xl sm:text-4xl">{completionPercent}%</span>
             </h1>
-            <p className="text-sm font-bold text-zinc-600 max-w-xl leading-relaxed">
+            <p className="text-sm font-semibold text-zinc-600 max-w-xl leading-relaxed">
               {hasActiveHistory ? (
-                <>根据您近 7 天的实际学习强度（累计学时 {totalMinutes7Days} 分钟，实测完成 {totalCards7Days} 张卡片），</>
+                <>Based on your last 7 days ({totalMinutes7Days} min studied, {totalCards7Days} cards completed), </>
               ) : (
-                <>按您当前设定的每日学习计划（每日目标 {targetDailyMinutes} 分钟，预计日均完成约 {estimatedDailyCardVelocity} 张卡片），</>
+                <>At your daily target of {targetDailyMinutes} min/day (~{estimatedDailyCardVelocity} cards/day), </>
               )}
               {estimatedDaysRemaining > 0 ? (
                 <>
-                  预计还需 <span className="text-zinc-950 font-black underline decoration-emerald-500 decoration-2">{estimatedDaysRemaining} 天</span> 即可完成全部目标！
+                  estimated <span className="text-zinc-950 font-black underline decoration-emerald-500 decoration-2">{estimatedDaysRemaining} days</span> remaining to reach full mastery!
                 </>
               ) : (
-                <span className="text-emerald-700 font-black">已圆满完成全部目标！请持续复习巩固。</span>
+                <span className="text-emerald-700 font-black">All goals completed! Continue daily review to maintain fluency.</span>
               )}
             </p>
           </div>
 
-          {/* 右侧：关键进度卡片徽章 */}
+          {/* Progress badges */}
           <div className="grid grid-cols-2 gap-3 shrink-0 sm:w-80">
             <div className="bg-zinc-50 border-2 border-zinc-200 rounded-2xl p-3.5 text-center">
-              <span className="text-xs font-bold text-zinc-500 block mb-1">卡片完成度</span>
+              <span className="text-xs font-bold text-zinc-500 block mb-1">Cards Completed</span>
               <span className="text-lg font-black text-emerald-700">
-                {completedCards} <span className="text-xs text-zinc-400 font-bold">/ {totalCards} 张</span>
+                {completedCards} <span className="text-xs text-zinc-400 font-bold">/ {totalCards}</span>
               </span>
             </div>
             <div className="bg-zinc-50 border-2 border-zinc-200 rounded-2xl p-3.5 text-center">
-              <span className="text-xs font-bold text-zinc-500 block mb-1">已学知识点</span>
+              <span className="text-xs font-bold text-zinc-500 block mb-1">Concepts Learned</span>
               <span className="text-lg font-black text-zinc-900">
-                {learnedCount} <span className="text-xs text-zinc-400 font-bold">/ {concepts.length} 个</span>
+                {learnedCount} <span className="text-xs text-zinc-400 font-bold">/ {concepts.length}</span>
               </span>
             </div>
           </div>
         </div>
 
-        {/* 动态绿色大进度条 */}
+        {/* Dynamic progress bar */}
         <div className="space-y-2 pt-2">
           <div className="flex justify-between items-center text-xs font-black">
             <span className="text-zinc-500">
-              依据：HSK 1 课程 36 个知识点捆绑的 {totalCards} 张教学卡片
+              HSK 1 Curriculum: {completedCards} of {totalCards} cards completed
             </span>
             <span className="text-emerald-700 font-black text-sm">{completionPercent}%</span>
           </div>
@@ -260,32 +256,30 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
         </div>
       </section>
 
-      {/* =========================================================================
-          第二部分：每天学习时长，卡片完成情况曲线 (Daily Study Trends)
-          ========================================================================= */}
+      {/* Daily Study Trends Section */}
       <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-emerald-600" />
               <h2 className="text-lg sm:text-xl font-black text-zinc-950">
-                近 7 天学习趋势
+                7-Day Activity Trends
               </h2>
             </div>
             <p className="text-xs font-bold text-zinc-500">
-              对比每日学习时长（分钟）与完成卡片数量（张）
+              Daily study time (min) vs. completed cards
             </p>
           </div>
 
-          {/* 图例标签 */}
+          {/* Legend tags */}
           <div className="flex items-center gap-4 text-xs font-black">
             <div className="flex items-center gap-1.5">
               <div className="w-3.5 h-3.5 rounded-md bg-emerald-500" />
-              <span className="text-zinc-700">学习时长 (分钟)</span>
+              <span className="text-zinc-700">Study Time (min)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3.5 h-1.5 rounded-full bg-sky-500" />
-              <span className="text-zinc-700">卡片完成数 (张)</span>
+              <span className="text-zinc-700">Cards Completed</span>
             </div>
           </div>
         </div>
@@ -294,12 +288,12 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
           <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 flex items-start sm:items-center gap-3 text-xs text-amber-900 font-bold">
             <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
             <span>
-              过去 7 天在此终端暂无历史学习记录（所有未学习日期均如实标记为 0 分钟 / 0 张卡片）。完成练习后将实时真实沉淀于此。
+              No study sessions recorded yet in the past 7 days. Complete practice sessions to see your progress here.
             </span>
           </div>
         )}
 
-        {/* Recharts 双维度趋势图 */}
+        {/* Recharts trend chart */}
         <div className="w-full h-72 pt-2">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
@@ -319,7 +313,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                 axisLine={{ stroke: '#d4d4d8' }}
                 tick={{ fontSize: 12, fill: '#71717a', fontWeight: 'bold' }}
               />
-              {/* 左侧 Y 轴：学习时长 */}
+              {/* Left Y Axis: Study Time */}
               <YAxis 
                 yAxisId="left"
                 tickLine={false}
@@ -327,14 +321,14 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                 tick={{ fontSize: 11, fill: '#10b981', fontWeight: 'bold' }}
                 unit="m"
               />
-              {/* 右侧 Y 轴：完成卡片数 */}
+              {/* Right Y Axis: Completed Cards */}
               <YAxis 
                 yAxisId="right" 
                 orientation="right"
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 11, fill: '#0284c7', fontWeight: 'bold' }}
-                unit="张"
+                unit=" cards"
               />
               <Tooltip 
                 contentStyle={{
@@ -347,8 +341,8 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                   fontSize: '12px',
                 }}
                 formatter={(value: any, name: any) => {
-                  if (name === 'minutes') return [`${value} 分钟`, '学习时长'];
-                  if (name === 'cards') return [`${value} 张`, '完成卡片'];
+                  if (name === 'minutes') return [`${value} min`, 'Study Time'];
+                  if (name === 'cards') return [`${value} cards`, 'Cards Completed'];
                   return [value, name];
                 }}
                 labelFormatter={(label, payload) => {
@@ -388,18 +382,19 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
           需求：只需要总结知识点以及学习进度，通过绿色渐变色表示完成度，
           主题标注关键词，简洁美观，不需要把所有细碎东西全列上去。
           ========================================================================= */}
+      {/* Concept Mastery Summary Section */}
       <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg sm:text-xl font-black text-zinc-950">
-              知识点学习进度总结
+              Concept Mastery Overview
             </h2>
             <p className="text-xs font-bold text-zinc-500 mt-0.5">
-              绿色渐变展示各知识点的实测完成度（0% ~ 100%）
+              Visual completion and retention score by concept (0% – 100%)
             </p>
           </div>
 
-          {/* 选项过滤与搜索 */}
+          {/* Filter tabs */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="inline-flex bg-zinc-100 p-1 rounded-2xl border border-zinc-200 text-xs font-black">
               <button
@@ -410,7 +405,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                     : 'text-zinc-500 hover:text-zinc-900'
                 }`}
               >
-                全部 ({concepts.length})
+                All ({concepts.length})
               </button>
               <button
                 onClick={() => setFilterType('learning')}
@@ -420,7 +415,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                     : 'text-zinc-500 hover:text-zinc-900'
                 }`}
               >
-                学习中 ({learnedCount - masteredCount > 0 ? learnedCount - masteredCount : 0})
+                In Progress ({learnedCount - masteredCount > 0 ? learnedCount - masteredCount : 0})
               </button>
               <button
                 onClick={() => setFilterType('mastered')}
@@ -430,29 +425,29 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                     : 'text-zinc-500 hover:text-zinc-900'
                 }`}
               >
-                已掌握 ({masteredCount})
+                Mastered ({masteredCount})
               </button>
             </div>
           </div>
         </div>
 
-        {/* 简洁搜索过滤栏 */}
+        {/* Search bar */}
         <div className="relative">
           <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索知识点名称或主题关键词（如：核心语法、问候、数字）..."
+            placeholder="Search concepts or topics (e.g. grammar, greeting, number)..."
             className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-zinc-50 border-2 border-zinc-200 focus:border-zinc-900 text-xs font-bold text-zinc-900 outline-none transition-colors"
           />
         </div>
 
-        {/* 简洁美观的知识点卡片列表 */}
+        {/* Concept Card Grid */}
         {filteredConcepts.length === 0 ? (
           <div className="text-center py-12 text-zinc-400 space-y-2">
             <Layers className="w-8 h-8 mx-auto stroke-[1.5] text-zinc-300" />
-            <p className="text-xs font-bold">没有找到匹配的知识点</p>
+            <p className="text-xs font-bold">No matching concepts found</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -461,13 +456,12 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
               const score = mastery ? mastery.masteryScore : 0;
               const percent = Math.min(100, Math.round(score * 100));
               const themeInfo = THEME_KEYWORDS[concept.theme] || {
-                label: '通用主题',
+                label: 'General',
                 bg: 'bg-zinc-100',
                 text: 'text-zinc-700',
                 border: 'border-zinc-200',
               };
 
-              // 绿色渐变逻辑：随着完成度提升，由柔和浅绿迈向浓郁翠绿
               const isMastered = percent >= 80;
               const hasStarted = percent > 0;
 
@@ -476,7 +470,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                   key={concept.conceptId}
                   className="bg-zinc-50/70 hover:bg-white rounded-2xl border-2 border-zinc-200 hover:border-zinc-900 p-4 transition-all space-y-3 shadow-xs hover:shadow-[0_3px_0_#18181b]"
                 >
-                  {/* 卡片头部：主题关键词标签与发音 */}
+                  {/* Topic badge and audio */}
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${themeInfo.bg} ${themeInfo.text} ${themeInfo.border}`}>
                       {themeInfo.label}
@@ -486,17 +480,17 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                       <button
                         onClick={() => audioFeedback.speakChinese(concept.titleZh)}
                         className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                        title="标准普通话朗读"
+                        title="Play pronunciation"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
                       </button>
                       <span className="text-[11px] font-bold text-zinc-400">
-                        {cardCountByConcept[concept.conceptId] || 1} 张卡片
+                        {cardCountByConcept[concept.conceptId] || 1} cards
                       </span>
                     </div>
                   </div>
 
-                  {/* 知识点核心名称 */}
+                  {/* Concept title */}
                   <div className="space-y-0.5">
                     <h3 className="font-chinese text-base font-black text-zinc-900">
                       {concept.titleZh}
@@ -506,14 +500,14 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                     </p>
                   </div>
 
-                  {/* 绿色渐变完成度进度条 */}
+                  {/* Progress bar */}
                   <div className="space-y-1.5 pt-1">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-zinc-400 text-[11px]">学习进度</span>
+                      <span className="font-bold text-zinc-400 text-[11px]">Mastery</span>
                       <span className={`font-black ${
                         isMastered ? 'text-emerald-700' : hasStarted ? 'text-emerald-600' : 'text-zinc-400'
                       }`}>
-                        {isMastered ? '已掌握 100%' : `${percent}%`}
+                        {isMastered ? 'Mastered 100%' : `${percent}%`}
                       </span>
                     </div>
 
@@ -529,13 +523,13 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                     </div>
                   </div>
 
-                  {/* 快捷操作：复习/进入练习 */}
+                  {/* Action button */}
                   <div className="pt-1 flex items-center justify-end">
                     <button
                       onClick={() => onReviewConcept(concept.conceptId)}
                       className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-800 hover:text-emerald-950 px-3 py-1.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-200 border border-emerald-300/80 transition-all cursor-pointer"
                     >
-                      <span>{hasStarted ? '练习巩固' : '开始学习'}</span>
+                      <span>{hasStarted ? 'Practice' : 'Start'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>

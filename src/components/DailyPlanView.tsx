@@ -244,7 +244,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <h3 className="text-sm font-black text-zinc-950 uppercase tracking-wider">
-              Today's Routine (今日四大任务)
+              Today's Routine
             </h3>
           </div>
           <span className="text-[11px] font-bold text-zinc-400">
@@ -253,7 +253,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {/* 1. Review (复习) */}
+          {/* 1. Review */}
           <div
             onClick={() => onStartStudy(firstReviewConceptId, 'review')}
             className="group bg-white rounded-2xl border-2 border-zinc-200 hover:border-emerald-600 p-4 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between gap-3"
@@ -268,7 +268,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 </span>
               </div>
               <h4 className="text-sm font-black text-zinc-900 group-hover:text-emerald-700 transition-colors">
-                Spaced Review (复习)
+                Spaced Review
               </h4>
               <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed font-medium">
                 Review memory-decayed items before they fade.
@@ -280,7 +280,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
             </div>
           </div>
 
-          {/* 2. Learn New Cards (学习新卡片) */}
+          {/* 2. Learn New Cards */}
           <div
             onClick={() => onStartStudy(firstNewConceptId, 'new')}
             className="group bg-white rounded-2xl border-2 border-zinc-200 hover:border-emerald-600 p-4 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between gap-3"
@@ -295,7 +295,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 </span>
               </div>
               <h4 className="text-sm font-black text-zinc-900 group-hover:text-emerald-700 transition-colors">
-                Learn New (新课)
+                Learn New Cards
               </h4>
               <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed font-medium">
                 Read concept card first, then practice exercises.
@@ -307,7 +307,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
             </div>
           </div>
 
-          {/* 3. Strengthen Weakness (补弱) */}
+          {/* 3. Strengthen Weakness */}
           <div
             onClick={() => onStartStudy(firstRemedialConceptId, 'remedial')}
             className="group bg-white rounded-2xl border-2 border-zinc-200 hover:border-emerald-600 p-4 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between gap-3"
@@ -322,7 +322,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 </span>
               </div>
               <h4 className="text-sm font-black text-zinc-900 group-hover:text-emerald-700 transition-colors">
-                Strengthen (补弱)
+                Strengthen Weakness
               </h4>
               <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed font-medium">
                 Mandatory rule popup on mistake before retry.
@@ -334,7 +334,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
             </div>
           </div>
 
-          {/* 4. Daily Quiz (日测) */}
+          {/* 4. Daily Quiz */}
           <div
             onClick={() => setIsQuizModalOpen(true)}
             className={`group rounded-2xl border-2 p-4 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between gap-3 ${
@@ -357,7 +357,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 )}
               </div>
               <h4 className="text-sm font-black text-zinc-900 group-hover:text-emerald-700 transition-colors">
-                Daily Quiz (日测)
+                Daily Quiz
               </h4>
               <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed font-medium">
                 Mistake consolidation + freeform translation.
@@ -452,7 +452,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                   <FileQuestion className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-zinc-950">Daily Quiz (今日巩固与翻译测验)</h3>
+                  <h3 className="text-base font-black text-zinc-950">Daily Quiz</h3>
                   <p className="text-xs text-zinc-500 font-medium">
                     Test your expressive accuracy with instant syntax evaluation.
                   </p>

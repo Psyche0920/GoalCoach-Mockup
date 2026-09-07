@@ -81,7 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
         >
           <TrendingUp className="w-5 h-5" />
-          <span>Progress 进度</span>
+          <span>Progress</span>
         </button>
 
         <button

@@ -58,12 +58,12 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
   };
 
   const interestOptions = [
-    { id: 'dining_food', label: '☕ Coffee & Food (餐饮与咖啡)', icon: '🍜' },
-    { id: 'travel_directions', label: '✈️ Travel & Directions (旅行问路)', icon: '🧭' },
-    { id: 'daily_life', label: '💬 Daily Chat & Friends (日常聊天)', icon: '🤝' },
-    { id: 'work_study', label: '💼 Work & Campus (职场学习)', icon: '📚' },
-    { id: 'shopping_prices', label: '🏷️ Shopping & Prices (购物买单)', icon: '🛒' },
-    { id: 'numbers_time', label: '📅 Numbers & Time (数字时间)', icon: '⏰' },
+    { id: 'dining_food', label: '☕ Coffee & Dining', icon: '🍜' },
+    { id: 'travel_directions', label: '✈️ Travel & Directions', icon: '🧭' },
+    { id: 'daily_life', label: '💬 Daily Conversation', icon: '🤝' },
+    { id: 'work_study', label: '💼 Work & Campus', icon: '📚' },
+    { id: 'shopping_prices', label: '🏷️ Shopping & Prices', icon: '🛒' },
+    { id: 'numbers_time', label: '📅 Numbers & Time', icon: '⏰' },
   ];
 
   return (

@@ -124,7 +124,7 @@ export const GoalCoachLogo: React.FC<GoalCoachLogoProps> = ({
         </div>
         {showSubtitle && (
           <span className="text-[10px] font-semibold text-zinc-500 tracking-normal mt-0.5">
-            Smart Adaptive Mandarin • 对外汉语专业体系
+            Smart Adaptive Mandarin • HSK 1 Standard
           </span>
         )}
       </div>

@@ -173,7 +173,7 @@ export const MasteryDashboard: React.FC<MasteryDashboardProps> = ({
               </span>
               <div>
                 <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">Module 1</span>
-                <h3 className="text-lg font-black text-zinc-950">Pinyin & Pronunciation (音标发音)</h3>
+                <h3 className="text-lg font-black text-zinc-950">Pinyin & Pronunciation</h3>
               </div>
             </div>
             <span className="text-xs font-bold text-zinc-400">
@@ -187,7 +187,7 @@ export const MasteryDashboard: React.FC<MasteryDashboardProps> = ({
         </section>
       )}
 
-      {/* Module 2: 核心语法 (Core Grammar Foundations) */}
+      {/* Module 2: Core Grammar Foundations */}
       {(activeModuleTab === 'all' || activeModuleTab === 'module2') && (
         <section className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
@@ -197,7 +197,7 @@ export const MasteryDashboard: React.FC<MasteryDashboardProps> = ({
               </span>
               <div>
                 <span className="text-[11px] font-black uppercase tracking-wider text-sky-700">Module 2</span>
-                <h3 className="text-lg font-black text-zinc-950">Core Grammar (核心语法骨架)</h3>
+                <h3 className="text-lg font-black text-zinc-950">Core Grammar</h3>
               </div>
             </div>
             <span className="text-xs font-bold text-zinc-400">
@@ -211,7 +211,7 @@ export const MasteryDashboard: React.FC<MasteryDashboardProps> = ({
         </section>
       )}
 
-      {/* Module 3: 主题情境实战 (Thematic Scenarios) */}
+      {/* Module 3: Thematic Scenarios */}
       {(activeModuleTab === 'all' || activeModuleTab === 'module3') && (
         <section className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
@@ -221,7 +221,7 @@ export const MasteryDashboard: React.FC<MasteryDashboardProps> = ({
               </span>
               <div>
                 <span className="text-[11px] font-black uppercase tracking-wider text-amber-700">Module 3</span>
-                <h3 className="text-lg font-black text-zinc-950">Thematic Scenarios (主题情境单元)</h3>
+                <h3 className="text-lg font-black text-zinc-950">Thematic Scenarios</h3>
               </div>
             </div>
             <span className="text-xs font-bold text-zinc-400">

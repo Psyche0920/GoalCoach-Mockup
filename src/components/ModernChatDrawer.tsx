@@ -53,7 +53,7 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
       {
         role: 'assistant',
         content:
-          '哈喽呀！我是你的中文私教搭子宝宝老师～🐼✨\n别把学中文当成压力，咱们就像喝茶聊天一样！\n你可以直接用中文跟我随便侃两句（比如“你好”、“今天天气真好”），或者好奇哪个拼音声调和句型怎么用，随时打字问我！说错了完全不用怕，有我帮你温柔把关～',
+          "Hi! I'm Coach Baobao, your personal Chinese tutor. 🐼✨\nFeel free to ask me anything in English or practice basic Mandarin! You can ask about grammar rules, pinyin tones, or practice simple dialogues.",
       },
     ];
   });
@@ -174,7 +174,7 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
       {
         role: 'assistant',
         content:
-          '哈喽呀！记录已清空～我是随时陪伴你的宝宝老师，今天想聊点什么或者攻克哪个中文难点？',
+          "Chat history cleared! Ask a question or pick a topic below to start practicing.",
       },
     ];
     setMessages(initial);
@@ -209,7 +209,7 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
 
       if (res.ok) {
         const data = await res.json();
-        const reply = data.reply || '很棒的提问！让我们继续练习。';
+        const reply = data.reply || 'Great question! Let’s keep practicing.';
         setMessages([...newMessages, { role: 'assistant', content: reply }]);
 
         // If in voice mode or speaking active, automatically speak reply
@@ -222,11 +222,11 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
     } catch (err) {
       console.warn('Chat request failed, using intelligent fallback:', err);
       // Deterministic pedagogical response with error correction & link to concepts
-      let reply = `你说得很有想法！在学习中文时，语序和词汇搭配最关键。`;
+      let reply = `Great effort! In Chinese, word order and particles are essential.`;
       if (textToSend.includes('茶想') || textToSend.includes('喝想')) {
-        reply = `【宝宝老师纠错】：你说“${textToSend}”，更地道的语序是“我想喝茶”。\n【知识点链接】：在 HSK 1 语法中，能愿动词“想 (xiǎng)”必须放在行为动词“喝”的前面，宾语“茶”在最后。\n【日常互动】：你喜欢喝中国绿茶还是红茶？`;
+        reply = `💡 Coach Tip: Instead of "${textToSend}", the standard word order is "我想喝茶" (Wǒ xiǎng hē chá - I want to drink tea).\n\nRule: Place modal verb "想 (xiǎng)" before the main action verb "喝 (hē)".`;
       } else {
-        reply = `你好！你说得很好。在 HSK 1 中，我们可以用最简单的句子多练习。比如：“你想喝咖啡吗？”`;
+        reply = `Nǐ hǎo! You're making steady progress. Try building simple sentences like "你想喝咖啡吗？" (Do you want to drink coffee?)`;
       }
       setMessages([...newMessages, { role: 'assistant', content: reply }]);
     } finally {
@@ -236,11 +236,11 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
 
   // Beginner Quick Practice Prompts
   const quickPrompts = [
-    '我想喝中国茶 🍵',
-    '四个声调怎么才能念准？🔊',
-    '平舌音和翘舌音(z/zh)怎么分？',
-    '今天我很高兴 (形容词句式)',
-    '“吗”和“呢”有什么区别？',
+    'Order tea: 我想喝茶 🍵',
+    'How do I master the 4 tones? 🔊',
+    'Difference between z/c/s & zh/ch/sh?',
+    'When to use 很 vs 是 with adjectives?',
+    'How do question particles 吗 and 呢 work?',
   ];
 
   return (
@@ -252,7 +252,7 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
             <PandaMascot mood="cheering" size={46} />
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="text-base font-black text-zinc-950">宝宝 (Coach Bǎobao)</h3>
+                <h3 className="text-base font-black text-zinc-950">Coach Bǎobao</h3>
                 <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
                   30y SLA Expert
                 </span>
@@ -352,7 +352,7 @@ export const ModernChatDrawer: React.FC<ModernChatDrawerProps> = ({
                       className="flex items-center gap-1 text-[10px] font-black text-emerald-700 hover:text-emerald-900"
                     >
                       <Volume2 className="w-3 h-3" />
-                      <span>Play Pronunciation (朗读)</span>
+                      <span>Play Pronunciation</span>
                     </button>
                   </div>
                 )}

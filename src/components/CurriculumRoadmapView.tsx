@@ -191,7 +191,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 {badgeText}
               </span>
               <span className="text-xs font-bold text-zinc-400">
-                共 {conceptsList.length} 个关卡
+                {conceptsList.length} Levels
               </span>
             </div>
             <h3 className="text-xl font-black text-zinc-950 font-chinese tracking-tight">
@@ -202,12 +202,12 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             </p>
           </div>
 
-          {/* Module 2-Tier Progress Pills: 学完 vs 掌握 */}
+          {/* Module 2-Tier Progress Pills: Completed vs Solid */}
           <div className="flex items-center gap-2.5">
             {/* Completed Pill */}
             <div className="px-3.5 py-2 rounded-2xl bg-zinc-50 border border-zinc-200 flex flex-col items-center">
               <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">
-                已学完 (Seen)
+                Completed
               </span>
               <span className="text-sm font-black text-emerald-600">
                 {stats.completedPct}%
@@ -219,7 +219,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               <div className="flex items-center gap-1">
                 <Crown className="w-3 h-3 text-amber-500 fill-amber-500" />
                 <span className="text-[10px] font-black text-amber-900 uppercase tracking-wider">
-                  已掌握 (Solid)
+                  Mastered
                 </span>
               </div>
               <span className="text-sm font-black text-amber-700">
@@ -252,7 +252,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                     {node.isCurrentActive && (
                       <div className="absolute -top-11 z-20 flex items-center gap-1.5 bg-zinc-950 text-white text-[11px] font-black px-3 py-1 rounded-full shadow-lg border border-zinc-800 animate-bounce">
                         <PandaMascot mood="cheering" size={20} />
-                        <span>点我打卡！</span>
+                        <span>Start!</span>
                       </div>
                     )}
 
@@ -274,17 +274,17 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                       ) : node.isMastered ? (
                         <>
                           <Crown className="w-6 h-6 text-zinc-950 fill-zinc-950" />
-                          <span className="text-[10px] font-black mt-0.5">掌握</span>
+                          <span className="text-[10px] font-black mt-0.5">Solid</span>
                         </>
                       ) : node.isCompleted ? (
                         <>
                           <Check className="w-7 h-7 stroke-[3]" />
-                          <span className="text-[10px] font-black mt-0.5">学完</span>
+                          <span className="text-[10px] font-black mt-0.5">Done</span>
                         </>
                       ) : (
                         <>
                           <Zap className="w-6 h-6 text-emerald-600 fill-emerald-600 animate-pulse" />
-                          <span className="text-[10px] font-black mt-0.5">可学</span>
+                          <span className="text-[10px] font-black mt-0.5">Ready</span>
                         </>
                       )}
                     </button>
@@ -293,11 +293,11 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                     <div className="mt-2.5 text-center max-w-[210px] space-y-0.5">
                       <div className="flex items-center justify-center gap-1">
                         <span className="text-[11px] font-bold text-zinc-400">
-                          第 {idx + 1} 关
+                          Level {idx + 1}
                         </span>
                         {isPinyin && (
                           <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 border border-sky-200">
-                            真人示范音
+                            Audio Guide
                           </span>
                         )}
                       </div>
@@ -315,14 +315,14 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          学完: {node.isCompleted ? '100%' : '0%'}
+                          Done: {node.isCompleted ? '100%' : '0%'}
                         </span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                           node.isMastered 
                             ? 'bg-amber-100 text-amber-800 border border-amber-300 font-black' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          掌握: {Math.round(node.score * 100)}%
+                          Solid: {Math.round(node.score * 100)}%
                         </span>
                       </div>
                     </div>
@@ -349,49 +349,49 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                   Curriculum Roadmap
                 </span>
                 <span className="text-[10px] font-bold text-zinc-500 bg-zinc-100 px-2.5 py-0.5 rounded-full">
-                  多邻国点亮通关体系
+                  Skill Path
                 </span>
               </div>
-              <h2 className="text-2xl font-black text-zinc-950 tracking-tight font-chinese mt-1">
-                HSK 1 课程路线图与打卡点亮
+              <h2 className="text-2xl font-black text-zinc-950 tracking-tight mt-1">
+                HSK 1 Curriculum Roadmap
               </h2>
             </div>
           </div>
 
-          {/* 30-Year Teacher Pedagogy Toggle Button */}
+          {/* Pedagogy Toggle Button */}
           <button
             onClick={() => setShowPedagogyExplanation(!showPedagogyExplanation)}
             className="px-4 py-2 rounded-2xl border-2 border-zinc-200 hover:border-zinc-950 bg-zinc-50 text-zinc-800 text-xs font-black flex items-center gap-2 cursor-pointer transition-all self-start sm:self-center"
           >
             <Info className="w-4 h-4 text-emerald-600" />
-            <span>区别“学完 100%”与“掌握 100%”</span>
+            <span>Completed vs. Mastered</span>
           </button>
         </div>
 
-        {/* Pedagogy Explanation Drawer / Banner (30 Years Teaching Wisdom) */}
+        {/* Pedagogy Explanation Drawer / Banner */}
         {showPedagogyExplanation && (
           <div className="p-5 rounded-2xl bg-amber-50/80 border-2 border-amber-300 text-xs text-amber-950 space-y-3 animate-in fade-in">
             <div className="flex items-center gap-2 font-black text-sm text-amber-900">
-              <span>🎓 30年对外汉语老教师特别提醒：</span>
+              <span>🎓 Mastery Guide:</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-3.5 bg-white rounded-xl border border-amber-200 space-y-1">
                 <div className="font-black text-emerald-700 flex items-center gap-1.5 text-xs">
                   <Check className="w-4 h-4" />
-                  <span>已学完 100% (Seen & Practiced)</span>
+                  <span>Completed (Seen & Practiced)</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 leading-relaxed">
-                  表示你已经完整阅读了该关卡的知识点精讲，并顺利通过了初次互动练习。但这只停留在<strong>工作记忆（短期记忆）</strong>中，若不及时复习，3天后遗忘率高达70%！
+                  You have reviewed the lesson and completed initial practice. Periodic spaced review is required to prevent memory decay.
                 </p>
               </div>
 
               <div className="p-3.5 bg-white rounded-xl border border-amber-200 space-y-1">
                 <div className="font-black text-amber-700 flex items-center gap-1.5 text-xs">
                   <Crown className="w-4 h-4 fill-amber-500 text-amber-500" />
-                  <span>已掌握 100% (Retained & Solidified)</span>
+                  <span>Mastered (Retained)</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 leading-relaxed">
-                  经受住了<strong>艾宾浩斯抗遗忘曲线</strong>的考验！在随后的间隔自测中主动提取准确率达到 85% 以上，形成了脱口而出的<strong>长期肌肉记忆</strong>，成功点亮黄金皇冠！
+                  Verified through active recall in spaced reviews with 85%+ accuracy, forming long-term reflex memory.
                 </p>
               </div>
             </div>
@@ -409,8 +409,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
                   Ultimate Achievement
                 </span>
-                <h3 className="text-lg font-black text-white font-chinese">
-                  Milestone 1 通关金牌目标
+                <h3 className="text-lg font-black text-white">
+                  Milestone 1 Goal
                 </h3>
               </div>
             </div>
@@ -418,14 +418,14 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             <div className="text-xs font-bold text-slate-400">
               {isMilestone1Complete ? (
                 <span className="text-emerald-400 font-black flex items-center gap-1.5">
-                  <Award className="w-4 h-4" /> 已全部通关！
+                  <Award className="w-4 h-4" /> Milestone Completed!
                 </span>
               ) : isMilestone1Learned ? (
                 <span className="text-amber-400 font-black">
-                  已全部学完！抓紧间隔自测冲刺100%掌握
+                  All lessons completed! Review to reach 100% mastery.
                 </span>
               ) : (
-                <span>需三个模块全部打卡达标解锁</span>
+                <span>Complete all 3 modules to unlock.</span>
               )}
             </div>
           </div>
@@ -435,7 +435,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             {/* Module 1 */}
             <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700 flex flex-col justify-between gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-sky-400">Module 1 · 拼音筑基</span>
+                <span className="text-xs font-black text-sky-400">Module 1 · Pinyin</span>
                 {m1Stats.masteredPct === 100 ? (
                   <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
                 ) : m1Stats.completedPct === 100 ? (
@@ -446,8 +446,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>学完: {m1Stats.completedPct}%</span>
-                  <span className="text-amber-300">掌握: {m1Stats.masteredPct}%</span>
+                  <span>Done: {m1Stats.completedPct}%</span>
+                  <span className="text-amber-300">Solid: {m1Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -461,7 +461,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             {/* Module 2 */}
             <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700 flex flex-col justify-between gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-emerald-400">Module 2 · 核心语法</span>
+                <span className="text-xs font-black text-emerald-400">Module 2 · Grammar</span>
                 {m2Stats.masteredPct === 100 ? (
                   <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
                 ) : m2Stats.completedPct === 100 ? (
@@ -472,8 +472,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>学完: {m2Stats.completedPct}%</span>
-                  <span className="text-amber-300">掌握: {m2Stats.masteredPct}%</span>
+                  <span>Done: {m2Stats.completedPct}%</span>
+                  <span className="text-amber-300">Solid: {m2Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -487,7 +487,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             {/* Module 3 */}
             <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700 flex flex-col justify-between gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-amber-400">Module 3 · 目标主题</span>
+                <span className="text-xs font-black text-amber-400">Module 3 · Scenarios</span>
                 {m3Stats.masteredPct === 100 ? (
                   <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
                 ) : m3Stats.completedPct === 100 ? (
@@ -498,8 +498,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>学完: {m3Stats.completedPct}%</span>
-                  <span className="text-amber-300">掌握: {m3Stats.masteredPct}%</span>
+                  <span>Done: {m3Stats.completedPct}%</span>
+                  <span className="text-amber-300">Solid: {m3Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -516,10 +516,10 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
         <div className="pt-2">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-xs font-black text-zinc-600 uppercase tracking-wider">
-              🎯 Module 3 场景兴趣联动（自适应优先排布）：
+              🎯 Module 3 Focus Priority:
             </span>
             <span className="text-[11px] font-bold text-emerald-700">
-              当前偏好: {activePreset.titleZh}
+              Active: {activePreset.badge || activePreset.titleEn}
             </span>
           </div>
 
@@ -536,8 +536,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                       : 'bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 border border-zinc-200'
                   }`}
                 >
-                  <span>{preset.badge}</span>
-                  <span>{preset.titleZh}</span>
+                  <span>{preset.badge || preset.titleEn}</span>
                 </button>
               );
             })}
@@ -554,7 +553,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 : 'text-zinc-600 hover:bg-zinc-100'
             }`}
           >
-            🗺️ 全部三模块总路线 ({concepts.length} 关)
+            🗺️ All Modules ({concepts.length})
           </button>
           <button
             onClick={() => setActiveModuleTab('module1')}
@@ -564,7 +563,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 : 'text-zinc-600 hover:bg-zinc-100'
             }`}
           >
-            🗣️ Module 1: 拼音筑基 ({module1Concepts.length} 关)
+            🗣️ Module 1: Pinyin ({module1Concepts.length})
           </button>
           <button
             onClick={() => setActiveModuleTab('module2')}
@@ -574,7 +573,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 : 'text-zinc-600 hover:bg-zinc-100'
             }`}
           >
-            📐 Module 2: 核心语法 ({module2Concepts.length} 关)
+            📐 Module 2: Grammar ({module2Concepts.length})
           </button>
           <button
             onClick={() => setActiveModuleTab('module3')}
@@ -584,7 +583,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 : 'text-zinc-600 hover:bg-zinc-100'
             }`}
           >
-            🎯 Module 3: 目标生活场景 ({module3Concepts.length} 关)
+            🎯 Module 3: Scenarios ({module3Concepts.length})
           </button>
         </div>
       </div>
@@ -593,9 +592,9 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       {(activeModuleTab === 'all' || activeModuleTab === 'module1') &&
         renderModuleSection(
           'module1',
-          'Module 1: 拼音筑基与纯正发音示范库',
+          'Module 1: Pinyin & Pronunciation',
           'Pinyin Phonetics, 4 Tones & Sandhi Rules with Native Audio Demo',
-          '发音基石 · 纯正语调',
+          'Phonetics & Tones',
           'sky',
           module1Concepts,
           m1Stats
@@ -604,9 +603,9 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       {(activeModuleTab === 'all' || activeModuleTab === 'module2') &&
         renderModuleSection(
           'module2',
-          'Module 2: 核心语法骨架与句式逻辑',
+          'Module 2: Core Grammar Foundations',
           'Essential HSK 1 Grammar Structures (SVO, 吗, 呢, 的, 在, 有, 想, 很)',
-          '语言骨架 · 必须掌握',
+          'Grammar Skeleton',
           'emerald',
           module2Concepts,
           m2Stats
@@ -615,9 +614,9 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       {(activeModuleTab === 'all' || activeModuleTab === 'module3') &&
         renderModuleSection(
           'module3',
-          `Module 3: 目标生活场景与交际实战 (${activePreset.titleZh} 优先)`,
+          `Module 3: Living Chinese Scenarios (${activePreset.badge || 'Focus'})`,
           'Goal-Linked Living Chinese Scenarios strictly adhering to learned HSK 1 vocabulary',
-          '真实场景 · 兴趣联动',
+          'Real-Life Application',
           'amber',
           module3Concepts,
           m3Stats
