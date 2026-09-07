@@ -1,12 +1,15 @@
 export type Score = number; // 0.0 to 1.0
 
-export type PlanItemKind = 'review' | 'remedial' | 'new';
+export type PlanItemKind = 'review' | 'remedial' | 'new' | 'daily_quiz';
 export type PlanStatus = 'active' | 'exhausted' | 'invalid';
 export type NextAction = 'plan_goal' | 'plan_review' | 'regenerate_plan' | 'teach';
 
-export type ConceptCategory = 'grammar' | 'general_knowledge' | 'scenario';
+export type ConceptCategory = 'pinyin' | 'grammar' | 'general_knowledge' | 'scenario';
+
+export type CurriculumModule = 'module1_pinyin' | 'module2_grammar' | 'module3_thematic' | 'module3_themes' | 'module1_grammar' | 'module2_vocabulary';
 
 export type CurriculumTheme =
+  | 'pinyin_basics'
   | 'core_grammar'
   | 'greetings_etiquette'
   | 'identity_family'
@@ -126,7 +129,7 @@ export interface CurriculumConcept {
   titleEn: string;
   conceptType: 'communication' | 'grammar' | 'vocabulary' | 'mixed';
   category: ConceptCategory;
-  module: 'module1_grammar' | 'module2_vocabulary';
+  module: CurriculumModule;
   theme: CurriculumTheme;
   tags: string[];
   isCoreGrammar: boolean;
@@ -178,5 +181,12 @@ export interface LearnerState {
   errorProfile: ErrorRecord[];
   activePlan: DailyPlan | null;
   sessions: SessionSummary[];
+  todayCheckedIn?: boolean;
+  lastCheckInDate?: string;
+  estimatedDaysRemaining?: number;
+  todayMistakeExerciseIds?: string[];
+  todayStudiedConceptIds?: string[];
+  coachChatHistory?: Array<{ role: 'user' | 'assistant'; content: string; timestamp?: string }>;
+  coachPreferences?: Record<string, any>;
   updatedAt: string;
 }

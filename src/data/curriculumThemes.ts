@@ -10,6 +10,14 @@ export interface CategoryMeta {
 }
 
 export const CATEGORY_REGISTRY: Record<ConceptCategory, CategoryMeta> = {
+  pinyin: {
+    id: 'pinyin',
+    titleZh: '音标发音单元',
+    titleEn: 'Pinyin & Pronunciation',
+    icon: '🗣️',
+    badge: '发音基础',
+    descriptionZh: '声母、韵母、四声声调与拼读规则，初学中文的发音钥匙。',
+  },
   grammar: {
     id: 'grammar',
     titleZh: '核心语法骨架',
@@ -47,6 +55,15 @@ export interface ThemeMeta {
 }
 
 export const THEME_REGISTRY: Record<CurriculumTheme, ThemeMeta> = {
+  pinyin_basics: {
+    id: 'pinyin_basics',
+    titleZh: '音标：声母、韵母与声调',
+    titleEn: 'Pinyin: Initials, Finals & Tones',
+    icon: '🗣️',
+    color: 'sky',
+    category: 'pinyin',
+    description: 'Learn the Chinese phonetic system: tones, initials, finals, and pronunciation rules.',
+  },
   core_grammar: {
     id: 'core_grammar',
     titleZh: '核心语法骨架',

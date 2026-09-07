@@ -1,5 +1,5 @@
 import React from 'react';
-import { Flame, ShieldCheck, Zap, RefreshCw, MessageSquare, Target } from 'lucide-react';
+import { RefreshCw, MessageSquare } from 'lucide-react';
 import { GoalCoachLogo } from './GoalCoachLogo.tsx';
 import { LearnerState, NextAction } from '../types.ts';
 
@@ -9,6 +9,7 @@ interface TopStatusBarProps {
   nextAction: NextAction;
   onRegeneratePlan: () => void;
   onOpenChat: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const TopStatusBar: React.FC<TopStatusBarProps> = ({
@@ -17,46 +18,31 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
   nextAction,
   onRegeneratePlan,
   onOpenChat,
+  onOpenProfile,
 }) => {
-  const completedCount = learnerState?.activePlan?.items.filter((i) => i.completed).length || 0;
-  const totalCount = learnerState?.activePlan?.items.length || 0;
-
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b-2 border-zinc-200 px-4 sm:px-8 py-3 select-none">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
-        {/* Mobile Brand */}
+        {/* Mobile Brand (Click to open Profile Drawer) */}
         <div className="flex items-center gap-2 lg:hidden">
-          <GoalCoachLogo size="sm" showSubtitle={false} />
+          <GoalCoachLogo 
+            size="sm" 
+            showSubtitle={false} 
+            onClick={onOpenProfile} 
+            isClickable={true} 
+          />
         </div>
 
-        {/* Status Badges in Duolingo Style (Streak / Mastery Points / Retention) */}
-        <div className="flex items-center gap-3 sm:gap-6">
-          {/* Streak indicator */}
-          <div
-            className="flex items-center gap-1.5 text-zinc-900 font-extrabold text-sm hover:bg-zinc-100 px-2.5 py-1 rounded-xl transition-colors cursor-pointer"
-            title="Current Daily Streak"
+        {/* Status in clean Duolingo / HelloChinese style without flame/zap/shield icons */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenProfile}
+            className="flex items-center gap-2 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl border border-emerald-300 transition-colors cursor-pointer"
+            title="Click to view or edit target goal"
           >
-            <Flame className="w-5 h-5 text-orange-500 fill-orange-500" />
-            <span>3</span>
-          </div>
-
-          {/* Retention Energy */}
-          <div
-            className="flex items-center gap-1.5 text-zinc-900 font-extrabold text-sm hover:bg-zinc-100 px-2.5 py-1 rounded-xl transition-colors cursor-pointer"
-            title="Spaced Memory Retention"
-          >
-            <Zap className="w-5 h-5 text-emerald-500 fill-emerald-500" />
-            <span>{Math.round(overallProgress * 100)}%</span>
-          </div>
-
-          {/* Today's Tasks */}
-          <div
-            className="flex items-center gap-1.5 text-zinc-900 font-extrabold text-sm hover:bg-zinc-100 px-2.5 py-1 rounded-xl transition-colors"
-            title="Completed items today"
-          >
-            <ShieldCheck className="w-5 h-5 text-sky-500 fill-sky-500" />
-            <span>{completedCount}/{totalCount}</span>
-          </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+            <span>HSK 1 Beginner · 150 Words</span>
+          </button>
         </div>
 
         {/* Right side controls */}
@@ -64,7 +50,7 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
           <button
             id="btn-top-regenerate"
             onClick={onRegeneratePlan}
-            className="p-2 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 rounded-xl transition-colors border-2 border-zinc-200 shadow-[0_2px_0_#e4e4e7] active:translate-y-0.5 active:shadow-none"
+            className="p-2 text-zinc-600 hover:text-zinc-950 hover:bg-zinc-100 rounded-xl transition-colors border-2 border-zinc-200 shadow-[0_2px_0_#e4e4e7] active:translate-y-0.5 active:shadow-none cursor-pointer"
             title="Re-plan today based on memory decay & error profile"
           >
             <RefreshCw className="w-4 h-4" />
@@ -73,7 +59,7 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
           <button
             id="btn-top-coach"
             onClick={onOpenChat}
-            className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase shadow-[0_2px_0_#15803d]"
+            className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase shadow-[0_2px_0_#15803d] cursor-pointer"
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span>Coach</span>

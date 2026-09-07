@@ -24,8 +24,10 @@ import { audioFeedback } from '../utils/audioFeedback.ts';
 interface DuolingoExerciseModalProps {
   conceptId: string;
   targetDomain?: string;
+  mode?: 'review' | 'new' | 'remedial' | 'daily_quiz';
   onClose: () => void;
   onSubmitAnswer: (exerciseId: string, answer: string) => Promise<GradingResult | null>;
+  onRecordMistake?: (exerciseId: string, conceptId: string) => void;
 }
 
 // Helper to extract the complete full target sentence in Chinese (not just a single word or answer token)
@@ -103,18 +105,27 @@ const COMMON_DISTRACTOR_TOKENS = [
 export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
   conceptId,
   targetDomain = 'general',
+  mode = 'new',
   onClose,
   onSubmitAnswer,
+  onRecordMistake,
 }) => {
   const [loading, setLoading] = useState(true);
   const [concept, setConcept] = useState<CurriculumConcept | null>(null);
   const [cards, setCards] = useState<TeachingCard[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
 
-  // Flow: 'card' (teaching) -> 'practice' (exercises)
-  const [phase, setPhase] = useState<'card' | 'practice'>('card');
+  // Flow: For 'review' and 'remedial', jump straight into practice cards!
+  // For 'new', show knowledge concept card first, then practice.
+  const [phase, setPhase] = useState<'card' | 'practice'>(
+    mode === 'review' || mode === 'remedial' ? 'practice' : 'card'
+  );
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+
+  // Forced concept popup when answer is wrong in review/remedial mode, or user clicks "View Concept"
+  const [showConceptExplainer, setShowConceptExplainer] = useState(false);
+  const [forcedByMistake, setForcedByMistake] = useState(false);
 
   // Input states
   const [selectedOption, setSelectedOption] = useState<string>('');
@@ -286,10 +297,21 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
       if (result) {
         setGradingResult(result);
 
+        if (!result.passedGates) {
+          if (onRecordMistake) {
+            onRecordMistake(currentExercise.id, conceptId);
+          }
+          // For review and remedial modes: force open concept explainer on wrong answer!
+          if (mode === 'review' || mode === 'remedial') {
+            setForcedByMistake(true);
+            setShowConceptExplainer(true);
+          }
+        }
+
         // 获取完整正确句子（保证完整朗读全句，而非单纯重复单一字词）
         const fullCorrectSentence = getFullTargetSentenceZh(currentExercise);
 
-        // 成功发出成功提示音，失败发出失败提示音，然后再完整朗读正确答案的完整句子（女声模型，无标点符号发音）
+        // 成功发出成功提示音，失败发出失败提示音，然后再完整朗读正确答案的完整句子
         audioFeedback.playGradingFeedbackAndSentence(result.passedGates, fullCorrectSentence);
       }
     } finally {
@@ -501,9 +523,9 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                     setPhase('practice');
                   }
                 }}
-                className="px-6 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#15803d] flex items-center gap-2 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+                className="px-8 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-black text-sm uppercase tracking-wide border-2 border-zinc-950 shadow-[0_4px_0_#15803d] flex items-center gap-2 active:translate-y-1 active:shadow-none transition-all cursor-pointer"
               >
-                <span>{currentCardIndex < cards.length - 1 ? '下一页' : '开始练习'}</span>
+                <span>{currentCardIndex < cards.length - 1 ? 'NEXT' : 'CONTINUE'}</span>
                 <ArrowRight className="w-4 h-4 stroke-[3]" />
               </button>
             </div>
@@ -514,11 +536,25 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
           /* ======================================================== */
           currentExercise && (
             <div className="space-y-6">
-              {/* Exercise Header & Instruction */}
+              {/* Exercise Header & Instruction with View Concept link */}
               <div className="space-y-2">
-                <h3 className="text-lg font-black text-zinc-950">
-                  {currentExercise.instruction}
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-black text-zinc-950">
+                    {currentExercise.instruction}
+                  </h3>
+                  <button
+                    id="btn-view-concept"
+                    onClick={() => {
+                      setForcedByMistake(false);
+                      setShowConceptExplainer(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300 transition-colors shrink-0 shadow-xs"
+                    title="View Concept Explanation"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>View Concept</span>
+                  </button>
+                </div>
 
                 {/* Prompt Card with Audio Speaker & Clickable Radicals */}
                 <div className="bg-zinc-50 rounded-2xl p-4 border-2 border-zinc-200 flex items-center gap-4">
@@ -665,7 +701,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   {gradingResult.passedGates ? <Check className="w-4 h-4 stroke-[3]" /> : <X className="w-4 h-4 stroke-[3]" />}
                 </div>
                 <span className={`font-black text-base ${gradingResult.passedGates ? 'text-emerald-900' : 'text-rose-900'}`}>
-                  {gradingResult.passedGates ? '太棒了！' : '正确答案：'}
+                  {gradingResult.passedGates ? 'Nice catch!' : 'Correct solution:'}
                 </span>
               </div>
 
@@ -678,7 +714,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   <button
                     onClick={() => audioFeedback.speakChinese(getFullTargetSentenceZh(currentExercise))}
                     className="p-1.5 rounded-full bg-emerald-200/70 hover:bg-emerald-300 text-emerald-900 cursor-pointer shadow-xs transition-colors"
-                    title="重听完整句子"
+                    title="Play Audio"
                   >
                     <Volume2 className="w-4 h-4" />
                   </button>
@@ -691,7 +727,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
             </div>
           ) : null}
 
-          {/* Action Button (Big CHECK button matching HelloChinese) */}
+          {/* Action Button (Big CHECK / CONTINUE button matching Duolingo & HelloChinese) */}
           {gradingResult ? (
             <button
               id="btn-duo-continue"
@@ -702,7 +738,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   : 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_5px_0_#9f1239]'
               } active:translate-y-1 active:shadow-none`}
             >
-              继续
+              CONTINUE
             </button>
           ) : (
             <button
@@ -715,11 +751,104 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   : 'bg-zinc-200 text-zinc-400 border-2 border-zinc-300 cursor-not-allowed'
               }`}
             >
-              {isSubmitting ? '评测中...' : '检查'}
+              {isSubmitting ? 'CHECKING...' : 'CHECK'}
             </button>
           )}
         </div>
       </footer>
+
+      {/* Forced / Optional Concept Explainer Modal (User requirement: review/remedial wrong answer forced popup) */}
+      {showConceptExplainer && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 border-2 border-zinc-950 shadow-2xl relative">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
+                  <BookOpen className="w-5 h-5" />
+                </span>
+                <div>
+                  <div className="text-[11px] font-black uppercase text-emerald-700">
+                    {forcedByMistake ? 'Review Required Concept' : 'Concept Explanation'}
+                  </div>
+                  <h3 className="text-lg font-black text-zinc-950 font-chinese">
+                    {concept?.titleZh || '知识点'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowConceptExplainer(false);
+                  setForcedByMistake(false);
+                }}
+                className="p-1 text-zinc-400 hover:text-zinc-900 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {forcedByMistake && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-900 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Let's review this concept first so you can master it!</span>
+              </div>
+            )}
+
+            <div className="space-y-3 bg-zinc-50 p-4 rounded-2xl border border-zinc-200 text-sm">
+              <div className="font-bold text-zinc-800">
+                {concept?.titleEn}
+              </div>
+              <div className="text-xs text-zinc-600 leading-relaxed">
+                {concept?.communicativeGoal}
+              </div>
+              {concept?.grammarFocus && concept.grammarFocus.length > 0 && (
+                <div className="pt-2 border-t border-zinc-200 space-y-1">
+                  <span className="text-[11px] font-extrabold uppercase text-zinc-400 block">Focus Rules</span>
+                  {concept.grammarFocus.map((gf, idx) => (
+                    <div key={idx} className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50/70 px-2.5 py-1 rounded-lg">
+                      • {gf}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Teaching Card sample */}
+              {cards[0] && (
+                <div className="mt-3 p-3 bg-white rounded-xl border border-zinc-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zinc-400">Example</span>
+                    <button
+                      onClick={() => audioFeedback.speakChinese(cards[0].exampleZh)}
+                      className="text-xs font-bold text-emerald-700 flex items-center gap-1 hover:underline"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" /> Play
+                    </button>
+                  </div>
+                  <div className="font-chinese text-base font-black text-zinc-900">
+                    {cards[0].exampleZh}
+                  </div>
+                  <div className="text-xs font-mono text-emerald-600 font-bold">
+                    {cards[0].examplePinyin}
+                  </div>
+                  <div className="text-xs text-zinc-500 italic">
+                    {cards[0].exampleEn}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              id="btn-close-concept-explainer"
+              onClick={() => {
+                setShowConceptExplainer(false);
+                setForcedByMistake(false);
+              }}
+              className="w-full py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-sm uppercase tracking-wider border-2 border-emerald-700 shadow-[0_4px_0_#059669] active:translate-y-1 active:shadow-none transition-all cursor-pointer"
+            >
+              I GOT IT, CONTINUE
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 4. Character Radical Decomposition Popover Modal (Image 1 Feature) */}
       {inspectedEntry && (

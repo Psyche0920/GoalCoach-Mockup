@@ -5,10 +5,8 @@ import {
   TrendingUp,
   BookOpen, 
   MessageSquare, 
-  Flame, 
-  ShieldCheck, 
-  Zap,
-  Target
+  Target,
+  Settings
 } from 'lucide-react';
 import { PandaMascot } from './PandaMascot.tsx';
 import { GoalCoachLogo } from './GoalCoachLogo.tsx';
@@ -18,6 +16,7 @@ interface SidebarProps {
   activeTab: 'plan' | 'curriculum' | 'retention';
   setActiveTab: (tab: 'plan' | 'curriculum' | 'retention') => void;
   onOpenChat: () => void;
+  onOpenProfile?: () => void;
   learnerState: LearnerState | null;
   overallProgress: number;
   nextAction: NextAction;
@@ -27,15 +26,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   onOpenChat,
+  onOpenProfile,
   learnerState,
   overallProgress,
   nextAction,
 }) => {
   return (
     <aside className="w-68 shrink-0 hidden lg:flex flex-col border-r-2 border-zinc-200 bg-white min-h-screen px-5 py-6 select-none">
-      {/* Brand Header with Sprout Logo */}
+      {/* Brand Header with Bamboo Panda Logo (Clickable to open profile) */}
       <div className="px-2 mb-8">
-        <GoalCoachLogo size="md" showSubtitle={true} />
+        <GoalCoachLogo 
+          size="md" 
+          showSubtitle={true} 
+          onClick={onOpenProfile} 
+          isClickable={true} 
+        />
       </div>
 
       {/* Main Navigation Links (Duolingo Style 3D Action Buttons) */}
@@ -89,16 +94,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </nav>
 
-      {/* Mini Mascot Card at Sidebar Bottom */}
-      <div className="bg-slate-900 rounded-3xl p-4 text-white space-y-3 shadow-[0_4px_0_#0f172a] border border-slate-800">
+      {/* Mini Mascot Card at Sidebar Bottom (Click to open profile) */}
+      <div 
+        onClick={onOpenProfile}
+        className="bg-slate-900 rounded-3xl p-4 text-white space-y-3 shadow-[0_4px_0_#0f172a] border border-slate-800 cursor-pointer group hover:border-emerald-500 transition-colors"
+        title="Click to view and edit study profile"
+      >
         <div className="flex items-center gap-3">
-          <PandaMascot mood="cheering" size={54} />
+          <PandaMascot mood="cheering" size={52} />
           <div>
-            <div className="text-xs font-black text-emerald-400 uppercase tracking-wider">Coach Bǎobao (宝包)</div>
+            <div className="text-xs font-black text-emerald-400 uppercase tracking-wider group-hover:text-emerald-300 transition-colors">
+              HSK 1 Learner
+            </div>
             <div className="text-[11px] text-zinc-300 font-medium leading-tight mt-0.5">
-              {nextAction === 'plan_review'
-                ? 'Time to review! Strengthen your memory.'
-                : 'Keep going! 你可以的！💪'}
+              Goal: 150 Words
             </div>
           </div>
         </div>

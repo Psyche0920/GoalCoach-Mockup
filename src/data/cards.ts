@@ -1,6 +1,70 @@
 import { TeachingCard } from '../types.ts';
 
 export const HSK1_TEACHING_CARDS_EXPANDED: TeachingCard[] = [
+  // ==========================================
+  // Module 1 Pinyin Teaching Cards
+  // ==========================================
+  {
+    id: 1001,
+    conceptId: 'hsk1_p01',
+    cardOrder: 1,
+    cardType: 'vocab',
+    theme: 'pinyin_basics',
+    tags: ['pinyin', 'initials', 'finals'],
+    promptZh: 'b, p, m, f & a, o, e',
+    pinyin: 'b, p, m, f / a, o, e',
+    meaningEn: 'Basic Initials & Simple Finals',
+    explanationEn: 'Pinyin uses Latin letters to represent Chinese sounds. "b" is voiceless like in "speak", "p" has a puff of air like "peak".',
+    exampleZh: '妈妈',
+    examplePinyin: 'māma',
+    exampleEn: 'Mom',
+  },
+  {
+    id: 1002,
+    conceptId: 'hsk1_p02',
+    cardOrder: 1,
+    cardType: 'vocab',
+    theme: 'pinyin_basics',
+    tags: ['pinyin', 'tones'],
+    promptZh: 'mā, má, mǎ, mà',
+    pinyin: 'mā, má, mǎ, mà',
+    meaningEn: 'The 4 Mandarin Tones',
+    explanationEn: '1st: high flat (¯); 2nd: rising (/); 3rd: dip & rise (ˇ); 4th: sharp falling (\\). Tone changes the meaning completely!',
+    exampleZh: '茶 (2nd) & 大 (4th)',
+    examplePinyin: 'chá & dà',
+    exampleEn: 'Tea (rising) & Big (falling)',
+  },
+  {
+    id: 1003,
+    conceptId: 'hsk1_p03',
+    cardOrder: 1,
+    cardType: 'vocab',
+    theme: 'pinyin_basics',
+    tags: ['pinyin', 'sandhi'],
+    promptZh: '不变调',
+    pinyin: 'bù -> bú',
+    meaningEn: 'Tone Rule for 不 (Not)',
+    explanationEn: 'When 不 (bù, 4th tone) is followed by another 4th tone, it changes to 2nd tone (bú)! E.g., 不是 (bú shì).',
+    exampleZh: '不是 & 不喝',
+    examplePinyin: 'bú shì & bù hē',
+    exampleEn: 'Is not & Do not drink',
+  },
+  {
+    id: 1004,
+    conceptId: 'hsk1_p04',
+    cardOrder: 1,
+    cardType: 'vocab',
+    theme: 'pinyin_basics',
+    tags: ['pinyin', 'greetings'],
+    promptZh: '你好',
+    pinyin: 'nǐ hǎo',
+    meaningEn: 'Hello',
+    explanationEn: 'Pinyin, a phonetic system, is used to indicate the pronunciation of each Chinese character. One character, one pinyin syllable.',
+    exampleZh: '你好！',
+    examplePinyin: 'nǐ hǎo!',
+    exampleEn: 'Hello!',
+  },
+
   // hsk1_c01: Greetings & Polite Phrases
   {
     id: 1,
