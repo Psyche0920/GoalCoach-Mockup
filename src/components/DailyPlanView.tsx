@@ -25,7 +25,11 @@ import {
   Award,
   HelpCircle,
   Layers,
-  FileQuestion
+  FileQuestion,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap,
+  Info
 } from 'lucide-react';
 import { DailyPlan, PlanItem, CurriculumConcept, LearningGoal, LearnerState, CurriculumTheme } from '../types.ts';
 import { matchConceptsByVectorRAG, RagConceptMatch } from '../utils/vectorRagMatcher.ts';
@@ -98,6 +102,140 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
   const firstReviewConceptId = reviewItems[0]?.conceptId || concepts[0]?.conceptId || 'hsk1_c01';
   const firstNewConceptId = newItems[0]?.conceptId || concepts[1]?.conceptId || 'hsk1_c02';
   const firstRemedialConceptId = remedialItems[0]?.conceptId || concepts[2]?.conceptId || 'hsk1_c03';
+
+  // State to toggle TCSL Adaptive Intake Plan drawer
+  const [isIntakePlanOpen, setIsIntakePlanOpen] = useState(false);
+
+  // =========================================================================
+  // TCSL + Senior Software Engineer: Adaptive Intake Plan Engine
+  // Dynamic Priority & Pedagogical Ratios based on Ebbinghaus Retention & Stage
+  // =========================================================================
+  const learnedConcepts = concepts.filter((c) => {
+    const m = learnerState?.mastery?.[c.conceptId];
+    return (m?.masteryScore || 0) >= 0.65 || (m?.evidenceCount || 0) > 0;
+  });
+  const learnedCount = learnedConcepts.length;
+
+  // Real-time retention health across studied concepts
+  const studiedWithScore = learnedConcepts.filter(
+    (c) => (learnerState?.mastery?.[c.conceptId]?.masteryScore || 0) > 0
+  );
+  const avgRetention = studiedWithScore.length > 0
+    ? Math.round(
+        (studiedWithScore.reduce((sum, c) => sum + (learnerState?.mastery?.[c.conceptId]?.masteryScore || 0), 0) /
+          studiedWithScore.length) *
+          100
+      )
+    : 88;
+
+  // Determine Pedagogical Stage, Curricular Distribution & Cognitive Load Throttling
+  const getIntakeStage = () => {
+    if (learnedCount < 12) {
+      return {
+        stageId: 1,
+        title: 'Phase 1: Phonetics & Sound Anchoring',
+        badge: 'Phonetics Anchoring',
+        daySpan: 'Days 1–3',
+        recommendedDailyCount: 3,
+        retentionStatus: 'Foundation Grounding',
+        rationale:
+          'Working memory is dedicated to tonal pitch contours and novel consonants. Phonetics volume is prioritized (70%) to prevent fossilized pronunciation defects before introducing high character density.',
+        ratios: [
+          { label: 'Phonetics & Tones', pct: 70, colorBg: 'bg-sky-500', colorText: 'text-sky-800', border: 'border-sky-300' },
+          { label: 'Survival Core Anchors', pct: 30, colorBg: 'bg-emerald-500', colorText: 'text-emerald-800', border: 'border-emerald-300' },
+        ],
+      };
+    } else if (learnedCount < 45) {
+      const dailyCount = avgRetention >= 80 ? 4 : 3;
+      return {
+        stageId: 2,
+        title: 'Phase 2: Morphosyntax & Core Frameworks',
+        badge: 'Syntax & Lexicon',
+        daySpan: 'Days 4–14',
+        recommendedDailyCount: dailyCount,
+        retentionStatus: avgRetention >= 80 ? 'Optimal Intake' : 'Needs Spaced Review',
+        rationale:
+          'Acoustic mapping is stabilized. Sentence patterns (SVO, negation, questions) now serve as structural pegs for conversational vocabulary, reinforced by tone sandhi rules.',
+        ratios: [
+          { label: 'Grammar Patterns (SVO, 吗, 不)', pct: 45, colorBg: 'bg-emerald-500', colorText: 'text-emerald-800', border: 'border-emerald-300' },
+          { label: 'Essential Living Lexicon', pct: 35, colorBg: 'bg-indigo-500', colorText: 'text-indigo-800', border: 'border-indigo-300' },
+          { label: 'Tone Sandhi & Nuances', pct: 20, colorBg: 'bg-amber-500', colorText: 'text-amber-800', border: 'border-amber-300' },
+        ],
+      };
+    } else {
+      const dailyCount = avgRetention >= 85 ? 5 : avgRetention >= 72 ? 4 : 2;
+      return {
+        stageId: 3,
+        title: 'Phase 3: Domain Specialization & Communicative Fluency',
+        badge: 'Adaptive Fluency',
+        daySpan: 'Days 15+',
+        recommendedDailyCount: dailyCount,
+        retentionStatus: avgRetention >= 85 ? 'Accelerated Pace' : avgRetention >= 72 ? 'Balanced Pace' : 'Consolidation Throttle',
+        rationale:
+          'Vocabulary branches into target domains (Career, Travel, Dining, Social). New intake automatically throttles down if memory decay exceeds threshold, protecting working memory from backlog collapse.',
+        ratios: [
+          { label: 'Target Domain Lexicon', pct: 50, colorBg: 'bg-indigo-500', colorText: 'text-indigo-800', border: 'border-indigo-300' },
+          { label: 'Discourse Patterns & Particles', pct: 30, colorBg: 'bg-emerald-500', colorText: 'text-emerald-800', border: 'border-emerald-300' },
+          { label: 'Weak-Link Remediation', pct: 20, colorBg: 'bg-rose-500', colorText: 'text-rose-800', border: 'border-rose-300' },
+        ],
+      };
+    }
+  };
+
+  const currentStage = getIntakeStage();
+
+  // Find prioritized unlearned concepts matching current stage
+  const unlearnedConcepts = concepts.filter((c) => {
+    const m = learnerState?.mastery?.[c.conceptId];
+    return (m?.masteryScore || 0) < 0.65 && (m?.evidenceCount || 0) === 0;
+  });
+
+  const prioritizedIntakeQueue = unlearnedConcepts
+    .map((concept) => {
+      let weight = 70;
+      let tag = 'General';
+      let rationale = 'Curriculum progression item';
+
+      if (currentStage.stageId === 1) {
+        if (concept.module === 'module1_pinyin' || concept.category === 'pinyin') {
+          weight = 98;
+          tag = 'Phonetics Target (70%)';
+          rationale = 'Mandatory acoustic foundation prerequisite before multi-character vocabulary.';
+        } else if (concept.vocabularyFocus?.some((w) => ['你好', '是', '好'].includes(w))) {
+          weight = 88;
+          tag = 'Survival Anchor (30%)';
+          rationale = 'High-frequency living anchor for early conversational confidence.';
+        }
+      } else if (currentStage.stageId === 2) {
+        if (concept.isCoreGrammar || concept.category === 'grammar') {
+          weight = 95;
+          tag = 'Grammar Framework (45%)';
+          rationale = 'Core sentence pattern scaffold required to bind upcoming vocabulary.';
+        } else if (concept.tags?.includes('sandhi') || concept.tags?.includes('tone_pairs')) {
+          weight = 85;
+          tag = 'Tone Sandhi (20%)';
+          rationale = 'Spoken flow rule preventing robotic word-by-word delivery.';
+        } else {
+          weight = 80;
+          tag = 'Living Lexicon (35%)';
+          rationale = 'High-utility communicative vocabulary.';
+        }
+      } else {
+        if (goal?.targetDomain && concept.tailoredExamples?.[goal.targetDomain as keyof typeof concept.tailoredExamples]) {
+          weight = 96;
+          tag = 'Target Domain (50%)';
+          rationale = `Directly aligned with your selected learning goal: ${goal.title}.`;
+        } else if (concept.isCoreGrammar) {
+          weight = 86;
+          tag = 'Discourse Pattern (30%)';
+          rationale = 'Multi-clause sentence connector for extended speech.';
+        }
+      }
+
+      return { concept, weight, tag, rationale };
+    })
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3);
 
   // Check-In Execution with natural retention regression
   const handlePerformCheckIn = (simulatePoorAccuracy: boolean) => {
@@ -237,7 +375,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 2. Today's 4 Tasks (Review, Learn, Strengthen, Daily Quiz)                */}
+      {/* Today's 4 Core Study Modes                                                */}
       {/* ========================================================================= */}
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
@@ -280,30 +418,65 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
             </div>
           </div>
 
-          {/* 2. Learn New Cards */}
+          {/* 2. Learn New Cards with Adaptive Pedagogical Intake Plan */}
           <div
-            onClick={() => onStartStudy(firstNewConceptId, 'new')}
-            className="group bg-white rounded-2xl border-2 border-zinc-200 hover:border-emerald-600 p-4 transition-all cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between gap-3"
+            className="group bg-white rounded-2xl border-2 border-zinc-200 hover:border-emerald-600 p-4 transition-all shadow-xs hover:shadow-md flex flex-col justify-between gap-3"
           >
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                   Task 2
                 </span>
-                <span className="text-xs font-bold text-zinc-400">
-                  {newItems.length || 3} cards
+                <span className="text-xs font-black text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                  +{currentStage.recommendedDailyCount} today
                 </span>
               </div>
               <h4 className="text-sm font-black text-zinc-900 group-hover:text-emerald-700 transition-colors">
                 Learn New Cards
               </h4>
-              <p className="text-[11px] text-zinc-500 line-clamp-2 leading-relaxed font-medium">
-                Read concept card first, then practice exercises.
-              </p>
+              <div className="text-[11px] font-bold text-zinc-500">
+                {currentStage.badge} · {currentStage.daySpan}
+              </div>
+
+              {/* Dynamic Ratio Bar Preview */}
+              <div className="pt-1">
+                <div className="flex items-center justify-between text-[10px] font-bold text-zinc-500 mb-1">
+                  <span>Pedagogical Ratio:</span>
+                  <span className="text-zinc-800 font-black">
+                    {currentStage.ratios.map((r) => `${r.pct}%`).join(' : ')}
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-zinc-100 rounded-full overflow-hidden flex">
+                  {currentStage.ratios.map((r, idx) => (
+                    <div
+                      key={idx}
+                      className={`${r.colorBg} h-full`}
+                      style={{ width: `${r.pct}%` }}
+                      title={`${r.label}: ${r.pct}%`}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-xs font-black text-emerald-700">
-              <span>Study New</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+
+            <div className="space-y-2 pt-2 border-t border-zinc-100">
+              <div
+                onClick={() => onStartStudy(firstNewConceptId, 'new')}
+                className="flex items-center justify-between text-xs font-black text-emerald-700 hover:text-emerald-900 cursor-pointer"
+              >
+                <span>Study Next Card</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsIntakePlanOpen(!isIntakePlanOpen)}
+                className="w-full py-1.5 px-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-[10px] font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-zinc-200"
+              >
+                <GraduationCap className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{isIntakePlanOpen ? 'Hide Intake Plan' : 'View TCSL Intake Plan'}</span>
+                {isIntakePlanOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
             </div>
           </div>
 
@@ -350,7 +523,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 </span>
                 {isQuizCompleted ? (
                   <span className="flex items-center gap-1 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                    <Check className="w-3.5 h-3.5 stroke-[3]" /> Done
+                    <Check className="w-3.5 h-3.5 stroke-[3]" /> Learned
                   </span>
                 ) : (
                   <span className="text-xs font-bold text-amber-600">Pending</span>
@@ -369,6 +542,214 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* ========================================================================= */}
+        {/* TCSL + Senior Software Engineer: Adaptive Intake Plan Panel                */}
+        {/* ========================================================================= */}
+        {isIntakePlanOpen && (
+          <div className="mt-4 bg-white border-2 border-emerald-500 rounded-3xl p-5 sm:p-6 shadow-[3px_3px_0px_0px_rgba(16,185,129,1)] space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center shrink-0">
+                  <GraduationCap className="w-5 h-5 text-emerald-800" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-black text-zinc-950">
+                      TCSL Adaptive Intake Engine
+                    </h4>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      Active: {currentStage.title}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                    Dynamic intake volume & curricular ratios adapted to cognitive load and Ebbinghaus retention.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-zinc-400 block uppercase">Retention Health</span>
+                  <span className="text-sm font-black text-emerald-700">
+                    {avgRetention}% Avg Retention
+                  </span>
+                </div>
+                <span className="px-3 py-1 rounded-xl text-xs font-black bg-zinc-100 text-zinc-700 border border-zinc-200">
+                  Quota: +{currentStage.recommendedDailyCount} / day
+                </span>
+              </div>
+            </div>
+
+            {/* 3-Phase Progression Bar */}
+            <div className="space-y-2">
+              <span className="text-xs font-black uppercase tracking-wider text-zinc-500 block">
+                3-Phase Curricular Evolution Plan
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                {[
+                  {
+                    id: 1,
+                    phase: 'Phase 1',
+                    name: 'Phonetics Anchoring',
+                    days: 'Days 1–3',
+                    ratio: '70% Sound : 30% Anchors',
+                    desc: 'Acoustic discrimination & 4 tones before character overload.',
+                  },
+                  {
+                    id: 2,
+                    phase: 'Phase 2',
+                    name: 'Syntax & Lexicon',
+                    days: 'Days 4–14',
+                    ratio: '45% Grammar : 35% Lexicon : 20% Sandhi',
+                    desc: 'SVO sentence patterns & high-frequency communication.',
+                  },
+                  {
+                    id: 3,
+                    phase: 'Phase 3',
+                    name: 'Domain Specialization',
+                    days: 'Days 15+',
+                    ratio: '50% Domain : 30% Discourse : 20% Review',
+                    desc: 'Fluency in career/travel targets with automatic decay throttling.',
+                  },
+                ].map((st) => {
+                  const isCurrent = currentStage.stageId === st.id;
+                  const isPassed = currentStage.stageId > st.id;
+                  return (
+                    <div
+                      key={st.id}
+                      className={`p-3.5 rounded-2xl border-2 transition-all flex flex-col justify-between gap-2 ${
+                        isCurrent
+                          ? 'bg-emerald-50/80 border-emerald-600 shadow-xs ring-2 ring-emerald-500/20'
+                          : isPassed
+                          ? 'bg-zinc-50 border-zinc-200 opacity-75'
+                          : 'bg-white border-zinc-200 opacity-60'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${
+                              isCurrent
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-zinc-200 text-zinc-700'
+                            }`}
+                          >
+                            {st.phase} · {st.days}
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[10px] font-black text-emerald-700 uppercase">
+                              Current Target
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="text-xs font-black text-zinc-950 mt-1">{st.name}</h5>
+                        <p className="text-[11px] text-zinc-600 font-medium leading-snug">
+                          {st.desc}
+                        </p>
+                      </div>
+                      <div className="text-[10px] font-mono font-bold text-zinc-500 pt-2 border-t border-zinc-200/60">
+                        {st.ratio}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Current Stage Rationale & Segmented Ratios */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-zinc-900">Current Pedagogical Distribution</span>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                    Status: {currentStage.retentionStatus}
+                  </span>
+                </div>
+                <span className="text-[11px] text-zinc-500 font-medium">
+                  {learnedCount} total concepts logged ({avgRetention}% retention)
+                </span>
+              </div>
+
+              {/* Segmented Distribution Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {currentStage.ratios.map((ratio, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white border border-zinc-200 rounded-xl p-3 flex items-center justify-between gap-2"
+                  >
+                    <div>
+                      <span className="text-xs font-black text-zinc-900 block">{ratio.label}</span>
+                      <span className="text-[10px] font-medium text-zinc-500">Planned daily weight</span>
+                    </div>
+                    <span className="text-sm font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                      {ratio.pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Teacher Rationale Quote */}
+              <div className="bg-white/80 border-l-4 border-emerald-500 rounded-r-xl p-3 text-xs text-zinc-700 leading-relaxed font-medium">
+                <span className="font-black text-zinc-950 block mb-0.5">TCSL Pedagogical Directive:</span>
+                "{currentStage.rationale}"
+              </div>
+            </div>
+
+            {/* Today's Prioritized Intake Queue */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h5 className="text-xs font-black uppercase tracking-wider text-zinc-950">
+                  Today's Prioritized New Cards Queue ({prioritizedIntakeQueue.length})
+                </h5>
+                <span className="text-[11px] font-bold text-zinc-400">
+                  Priority formula: Stage weight + Domain match + Cognitive freshness
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {prioritizedIntakeQueue.map(({ concept, weight, tag, rationale }) => (
+                  <div
+                    key={concept.conceptId}
+                    className="bg-white border-2 border-zinc-200 hover:border-zinc-950 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all shadow-2xs hover:shadow-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 border border-emerald-300">
+                          {tag}
+                        </span>
+                        <span className="text-xs font-black text-zinc-950">
+                          {concept.titleEn}
+                        </span>
+                        <span className="text-[10px] font-mono font-bold text-zinc-400">
+                          ({concept.conceptId})
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-600 font-medium">
+                        {rationale}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 self-end sm:self-center">
+                      <div className="text-right">
+                        <span className="text-[9px] font-bold text-zinc-400 uppercase block">Priority</span>
+                        <span className="text-xs font-black text-emerald-700">{weight}%</span>
+                      </div>
+                      <button
+                        onClick={() => onStartStudy(concept.conceptId, 'new')}
+                        className="px-3.5 py-1.5 bg-zinc-950 hover:bg-zinc-800 text-white font-black text-xs rounded-xl border-2 border-zinc-950 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>Start</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* ========================================================================= */}
@@ -383,7 +764,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
               </span>
               {todayCheckedIn ? (
                 <span className="text-xs font-black text-emerald-700 flex items-center gap-1">
-                  <CheckCircle2 className="w-4 h-4" /> Completed Today
+                  <CheckCircle2 className="w-4 h-4" /> Checked In Today
                 </span>
               ) : (
                 <span className="text-xs font-bold text-zinc-500">
@@ -598,7 +979,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 onClick={handleFinishQuiz}
                 className="w-full py-3 bg-zinc-950 hover:bg-zinc-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-colors"
               >
-                Done & Record Progress
+                Record Progress
               </button>
             )}
           </div>

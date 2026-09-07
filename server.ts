@@ -130,26 +130,26 @@ function getOrCreateLearner(learnerId: string): LearnerState {
   const initialItems: PlanItem[] = [
     {
       id: `item-1`,
-      conceptId: 'hsk1_c02',
-      kind: 'review',
-      objective: 'Review self-introduction (我叫… / 我是…) to reinforce decayed memory',
-      estimatedMinutes: 6,
+      conceptId: 'hsk1_p01',
+      kind: 'new',
+      objective: 'Master Pinyin syllable anatomy & basic initials (b, p, m, f)',
+      estimatedMinutes: 5,
       completed: false,
     },
     {
       id: `item-2`,
-      conceptId: 'hsk1_c03',
-      kind: 'remedial',
-      objective: 'Practice pronoun + 是 copula sentence patterns',
+      conceptId: 'hsk1_c02',
+      kind: 'review',
+      objective: 'Review self-introduction (我叫… / 我是…) to reinforce memory',
       estimatedMinutes: 6,
       completed: false,
     },
     {
       id: `item-3`,
-      conceptId: 'hsk1_c04',
-      kind: 'new',
-      objective: 'Learn yes/no question formation using the particle 吗',
-      estimatedMinutes: 7,
+      conceptId: 'hsk1_c03',
+      kind: 'remedial',
+      objective: 'Practice pronoun + 是 copula sentence patterns',
+      estimatedMinutes: 6,
       completed: false,
     },
   ];
@@ -300,7 +300,10 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
     let weight = 0;
     const isPriorityTheme = userInterests.includes(concept.theme) || (targetDomain !== 'general' && (concept.tags.includes(targetDomain) || concept.theme === `${targetDomain}_directions` || concept.theme === `${targetDomain}_food` || concept.theme === `${targetDomain}_study`));
 
-    if (concept.isCoreGrammar || concept.category === 'grammar') {
+    if (concept.category === 'pinyin') {
+      // Pinyin phonetics foundation has top priority for unmastered concepts
+      weight += 1500;
+    } else if (concept.isCoreGrammar || concept.category === 'grammar') {
       // Must-have foundation
       weight += 1000;
     }

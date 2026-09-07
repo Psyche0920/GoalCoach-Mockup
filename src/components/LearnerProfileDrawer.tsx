@@ -30,41 +30,30 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
   onRegeneratePlan,
 }) => {
   const [minutes, setMinutes] = useState<number>(goal?.dailyAvailableMinutes || 15);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(
-    goal?.interests || ['dining_food', 'travel_directions', 'daily_life']
-  );
   const [targetDomain, setTargetDomain] = useState<string>(goal?.targetDomain || 'general');
+  const activePreset = GOAL_PRESETS.find((p) => p.id === targetDomain) || GOAL_PRESETS[0];
+  const [selectedInterests, setSelectedInterests] = useState<string[]>(
+    goal?.interests || activePreset.priorityThemes
+  );
 
   if (!isOpen) return null;
 
+  const handleSelectFocus = (presetId: string) => {
+    const preset = GOAL_PRESETS.find((p) => p.id === presetId) || GOAL_PRESETS[0];
+    setTargetDomain(preset.id);
+    setSelectedInterests(preset.priorityThemes);
+  };
+
   const handleSave = () => {
+    const preset = GOAL_PRESETS.find((p) => p.id === targetDomain) || GOAL_PRESETS[0];
     onUpdateGoal({
       dailyAvailableMinutes: minutes,
-      interests: selectedInterests as any,
+      interests: (preset.priorityThemes || selectedInterests) as any,
       targetDomain: targetDomain as any,
     });
     if (onRegeneratePlan) onRegeneratePlan();
     onClose();
   };
-
-  const toggleInterest = (id: string) => {
-    if (selectedInterests.includes(id)) {
-      if (selectedInterests.length > 1) {
-        setSelectedInterests(selectedInterests.filter(i => i !== id));
-      }
-    } else {
-      setSelectedInterests([...selectedInterests, id]);
-    }
-  };
-
-  const interestOptions = [
-    { id: 'dining_food', label: '☕ Coffee & Dining', icon: '🍜' },
-    { id: 'travel_directions', label: '✈️ Travel & Directions', icon: '🧭' },
-    { id: 'daily_life', label: '💬 Daily Conversation', icon: '🤝' },
-    { id: 'work_study', label: '💼 Work & Campus', icon: '📚' },
-    { id: 'shopping_prices', label: '🏷️ Shopping & Prices', icon: '🛒' },
-    { id: 'numbers_time', label: '📅 Numbers & Time', icon: '⏰' },
-  ];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-zinc-950/40 backdrop-blur-xs select-none animate-in fade-in duration-200">
@@ -132,32 +121,44 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
             </div>
           </div>
 
-          {/* Target Domain & Priority Themes */}
+          {/* Focus Priority (Replaces old interest section, linking tailored examples and themes) */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                Tailored Priority Interests
+                Focus Priority
               </label>
-              <span className="text-[10px] font-bold text-zinc-400">Select 1 or more</span>
+              <span className="text-[10px] font-bold text-emerald-700">
+                Active: {activePreset.badge || activePreset.titleEn}
+              </span>
             </div>
 
             <div className="space-y-2">
-              {interestOptions.map(opt => {
-                const isSelected = selectedInterests.includes(opt.id);
+              {GOAL_PRESETS.map((preset) => {
+                const isSelected = targetDomain === preset.id;
                 return (
                   <div
-                    key={opt.id}
-                    onClick={() => toggleInterest(opt.id)}
+                    key={preset.id}
+                    onClick={() => handleSelectFocus(preset.id)}
                     className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
                         ? 'bg-emerald-50 border-emerald-500 text-emerald-950 shadow-xs'
-                        : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100'
+                        : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-zinc-100'
                     }`}
                   >
-                    <span className="text-xs font-bold">{opt.label}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{preset.icon}</span>
+                      <div>
+                        <div className="text-xs font-black flex items-center gap-2">
+                          <span>{preset.badge || preset.titleEn}</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 font-medium line-clamp-1 mt-0.5">
+                          {preset.descriptionEn}
+                        </p>
+                      </div>
+                    </div>
                     <div
-                      className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                      className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors shrink-0 ml-2 ${
                         isSelected ? 'bg-emerald-600 text-white' : 'border border-zinc-300'
                       }`}
                     >

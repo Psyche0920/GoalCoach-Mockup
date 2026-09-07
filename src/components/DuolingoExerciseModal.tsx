@@ -387,7 +387,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                 relative inline-block transition-all select-none
                 ${breakdown ? 'border-b-2 border-dashed border-indigo-500 text-indigo-950 hover:bg-indigo-100/60 rounded px-1 cursor-pointer' : 'hover:bg-zinc-100 rounded px-1 cursor-pointer'}
               `}
-              title={breakdown ? '点击朗读发音并查看汉字偏旁部首树形拆解' : '点击朗读汉字发音'}
+              title={breakdown ? 'Listen & view radicals' : 'Listen'}
             >
               {segment}
             </span>
@@ -408,7 +408,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
         <button
           onClick={handleClose}
           className="text-zinc-400 hover:text-zinc-800 p-1.5 rounded-xl transition-colors cursor-pointer"
-          title="退出练习"
+          title="Exit"
         >
           <X className="w-5 h-5 stroke-[3]" />
         </button>
@@ -416,8 +416,8 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
         {/* Clean Top Tag */}
         <div className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
           {phase === 'card' 
-            ? (concept?.isCoreGrammar ? '核心语法' : '生词学习') 
-            : '练习'}
+            ? (concept?.isCoreGrammar ? 'Grammar' : 'Vocabulary') 
+            : 'Practice'}
         </div>
 
         {/* Progress Bar Container */}
@@ -445,7 +445,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-zinc-500">
-                    第 {currentCardIndex + 1} / {cards.length} 页
+                    Card {currentCardIndex + 1} / {cards.length}
                   </span>
                 </div>
 
@@ -454,7 +454,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   <button
                     onClick={() => playAudio(activeCard.promptZh || concept?.titleZh || '')}
                     className="p-2.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_3px_0_#059669] transition-all cursor-pointer"
-                    title="发音"
+                    title="Play"
                   >
                     <Volume2 className="w-5 h-5 stroke-[2.5]" />
                   </button>
@@ -490,10 +490,10 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                       <button
                         onClick={() => playAudio(tailored.zh)}
                         className="text-emerald-700 hover:text-emerald-900 flex items-center gap-1 text-xs font-bold cursor-pointer"
-                        title="朗读定制例句"
+                        title="Play tailored example"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
-                        朗读
+                        Listen
                       </button>
                     </div>
 
@@ -562,7 +562,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                   <button
                     onClick={() => audioFeedback.speakChinese(getPromptAudioText(currentExercise))}
                     className="p-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_3px_0_#059669] shrink-0 cursor-pointer"
-                    title="朗读"
+                    title="Play"
                   >
                     <Volume2 className="w-5 h-5 stroke-[2.5]" />
                   </button>
@@ -631,7 +631,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                       <div className="min-h-[84px] p-3.5 rounded-2xl border-2 border-dashed border-emerald-400 bg-emerald-50/40 flex flex-wrap gap-2.5 items-center justify-start">
                         {slotTokens.length === 0 ? (
                           <span className="text-sm font-medium text-zinc-400 pl-2">
-                            点击词块填入...
+                            Tap words below to form your sentence...
                           </span>
                         ) : (
                           slotTokens.map((tok, idx) => (
@@ -639,7 +639,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                               key={`slot-${tok}-${idx}`}
                               onClick={() => handleSlotTokenClick(idx, tok)}
                               className="px-4 py-2.5 rounded-xl bg-zinc-950 text-white font-chinese text-lg font-black border-2 border-zinc-950 shadow-[0_3px_0_#27272a] active:translate-y-0.5 cursor-pointer hover:bg-zinc-800 transition-transform flex items-center gap-1"
-                              title="点击退回词库"
+                              title="Tap to remove"
                             >
                               <span>{tok}</span>
                             </button>
@@ -655,7 +655,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                             className="text-xs font-bold text-zinc-500 hover:text-zinc-800 flex items-center gap-1 cursor-pointer"
                           >
                             <RotateCcw className="w-3 h-3" />
-                            <span>重置</span>
+                            <span>Reset</span>
                           </button>
                         </div>
                       )}
@@ -771,7 +771,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
                     {forcedByMistake ? 'Review Required Concept' : 'Concept Explanation'}
                   </div>
                   <h3 className="text-lg font-black text-zinc-950 font-chinese">
-                    {concept?.titleZh || '知识点'}
+                    {concept?.titleZh || 'Concept'}
                   </h3>
                 </div>
               </div>

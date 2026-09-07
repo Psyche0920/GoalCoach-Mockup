@@ -503,11 +503,11 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                   {/* Progress bar */}
                   <div className="space-y-1.5 pt-1">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-zinc-400 text-[11px]">Mastery</span>
+                      <span className="font-bold text-zinc-400 text-[11px]">Status</span>
                       <span className={`font-black ${
                         isMastered ? 'text-emerald-700' : hasStarted ? 'text-emerald-600' : 'text-zinc-400'
                       }`}>
-                        {isMastered ? 'Mastered 100%' : `${percent}%`}
+                        {isMastered ? 'Mastered' : hasStarted ? `Learned (${percent}%)` : 'Not Started'}
                       </span>
                     </div>
 

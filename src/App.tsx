@@ -226,6 +226,7 @@ export function App() {
                 }
               }}
               onUpdateGoal={handleUpdateGoal}
+              onOpenProfile={() => setIsProfileDrawerOpen(true)}
             />
           )}
 
@@ -261,6 +262,8 @@ export function App() {
           onComplete={(score) => {
             handleCompletePinyinLesson(selectedPinyinConceptId, score);
           }}
+          learnerState={learnerState}
+          concepts={concepts}
         />
       )}
 

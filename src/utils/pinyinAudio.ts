@@ -1,621 +1,198 @@
-// Professional Pinyin & Phonetics Native Audio Demonstration Engine
-// Built for Teaching Chinese as a Second Language (CSL) with 30-Year Expert Pedagogy
+// Pure Native Mandarin Audio Synthesis & Voice Recording Engine
+// Clean phonetic demonstration without chatty audio text
 
 export interface PinyinPhonemeItem {
   id: string;
-  symbol: string; // e.g., 'b', 'a', 'mā'
-  nameZh: string;
+  symbol: string;
   category: 'initial' | 'simple_final' | 'compound_final' | 'nasal_final' | 'tone' | 'sandhi' | 'whole_syllable';
-  anchorChar: string; // Native standard Mandarin character for perfect speech synthesis
+  anchorChar: string;
   anchorWord: string;
   pinyin: string;
   audioGuideEn: string;
-  mouthGuideZh: string;
   audioSpeechText: string;
-  pitchCurve?: string;
   ipa?: string;
 }
 
-// Initial consonants (声母: 21 standard + 2 semi-vowels)
 export const PINYIN_INITIALS: PinyinPhonemeItem[] = [
-  {
-    id: 'init_b',
-    symbol: 'b',
-    nameZh: '双唇不送气清塞音',
-    category: 'initial',
-    anchorChar: '玻',
-    anchorWord: '波浪 (bō)',
-    pinyin: 'bō',
-    ipa: '[p]',
-    audioGuideEn: 'Like "p" in "speak" (unaspirated, voiceless)',
-    mouthGuideZh: '双唇闭紧阻住气流，突然放开，气流较弱，声带不振动。',
-    audioSpeechText: '玻，波浪的波',
-  },
-  {
-    id: 'init_p',
-    symbol: 'p',
-    nameZh: '双唇送气清塞音',
-    category: 'initial',
-    anchorChar: '坡',
-    anchorWord: '山坡 (pō)',
-    pinyin: 'pō',
-    ipa: '[pʰ]',
-    audioGuideEn: 'Like "p" in "peak" (strong puff of air)',
-    mouthGuideZh: '双唇紧闭，突然放开发出强烈的送气爆发音。',
-    audioSpeechText: '坡，山坡的坡',
-  },
-  {
-    id: 'init_m',
-    symbol: 'm',
-    nameZh: '双唇鼻音',
-    category: 'initial',
-    anchorChar: '摸',
-    anchorWord: '抚摸 (mō)',
-    pinyin: 'mō',
-    ipa: '[m]',
-    audioGuideEn: 'Like "m" in "mother" (soft nasal)',
-    mouthGuideZh: '双唇闭紧，软腭下垂，气流从鼻腔通过，声带振动。',
-    audioSpeechText: '摸，抚摸的摸',
-  },
-  {
-    id: 'init_f',
-    symbol: 'f',
-    nameZh: '唇齿清擦音',
-    category: 'initial',
-    anchorChar: '佛',
-    anchorWord: '大佛 (fó)',
-    pinyin: 'fō',
-    ipa: '[f]',
-    audioGuideEn: 'Like "f" in "fish"',
-    mouthGuideZh: '上门齿轻轻接触下唇内侧，气流从唇齿缝隙挤出摩擦成音。',
-    audioSpeechText: '佛，大佛的佛',
-  },
-  {
-    id: 'init_d',
-    symbol: 'd',
-    nameZh: '舌尖中不送气清塞音',
-    category: 'initial',
-    anchorChar: '得',
-    anchorWord: '得到 (dé)',
-    pinyin: 'dē',
-    ipa: '[t]',
-    audioGuideEn: 'Like "t" in "stop" (unaspirated)',
-    mouthGuideZh: '舌尖抵住上齿龈阻住气流，突然放开，气流较弱。',
-    audioSpeechText: '得，得到的得',
-  },
-  {
-    id: 'init_t',
-    symbol: 't',
-    nameZh: '舌尖中送气清塞音',
-    category: 'initial',
-    anchorChar: '特',
-    anchorWord: '特别 (tè)',
-    pinyin: 'tē',
-    ipa: '[tʰ]',
-    audioGuideEn: 'Like "t" in "tea" (strong puff of air)',
-    mouthGuideZh: '舌尖抵住上齿龈阻气，突然放开，送出一股强气流。',
-    audioSpeechText: '特，特别的特',
-  },
-  {
-    id: 'init_n',
-    symbol: 'n',
-    nameZh: '舌尖中鼻音',
-    category: 'initial',
-    anchorChar: '讷',
-    anchorWord: '木讷 (nè)',
-    pinyin: 'nē',
-    ipa: '[n]',
-    audioGuideEn: 'Like "n" in "nose"',
-    mouthGuideZh: '舌尖抵住上齿龈，软腭下垂，气流从鼻腔自然流出。',
-    audioSpeechText: '讷，你好的你',
-  },
-  {
-    id: 'init_l',
-    symbol: 'l',
-    nameZh: '舌尖中边音',
-    category: 'initial',
-    anchorChar: '勒',
-    anchorWord: '快乐 (lè)',
-    pinyin: 'lē',
-    ipa: '[l]',
-    audioGuideEn: 'Like "l" in "love"',
-    mouthGuideZh: '舌尖抵住上齿龈，气流从舌头两边流出，声带振动。',
-    audioSpeechText: '勒，快乐的乐',
-  },
-  {
-    id: 'init_g',
-    symbol: 'g',
-    nameZh: '舌根不送气清塞音',
-    category: 'initial',
-    anchorChar: '哥',
-    anchorWord: '哥哥 (gē)',
-    pinyin: 'gē',
-    ipa: '[k]',
-    audioGuideEn: 'Like "k" in "skill" (unaspirated)',
-    mouthGuideZh: '舌根抵住软腭，突然放开，气流微弱。',
-    audioSpeechText: '哥，哥哥的哥',
-  },
-  {
-    id: 'init_k',
-    symbol: 'k',
-    nameZh: '舌根送气清塞音',
-    category: 'initial',
-    anchorChar: '科',
-    anchorWord: '科学 (kē)',
-    pinyin: 'kē',
-    ipa: '[kʰ]',
-    audioGuideEn: 'Like "k" in "kite" (strong puff of air)',
-    mouthGuideZh: '舌根抵住软腭，突然放开，喷出一股强气流。',
-    audioSpeechText: '科，看书的看',
-  },
-  {
-    id: 'init_h',
-    symbol: 'h',
-    nameZh: '舌根清擦音',
-    category: 'initial',
-    anchorChar: '喝',
-    anchorWord: '喝水 (hē)',
-    pinyin: 'hē',
-    ipa: '[x]',
-    audioGuideEn: 'Like "h" in "hat" (gently raspy)',
-    mouthGuideZh: '舌根接近软腭留出窄缝，气流从中摩擦而出。',
-    audioSpeechText: '喝，喝水的喝',
-  },
-  {
-    id: 'init_j',
-    symbol: 'j',
-    nameZh: '舌面前不送气清塞擦音',
-    category: 'initial',
-    anchorChar: '鸡',
-    anchorWord: '飞机 (jī)',
-    pinyin: 'jī',
-    ipa: '[tɕ]',
-    audioGuideEn: 'Like "jeep" with tongue tip pressed behind lower teeth',
-    mouthGuideZh: '舌面前部贴住硬腭前部，舌尖下垂抵住下齿背，气流轻微挤出。',
-    audioSpeechText: '鸡，飞机的机',
-  },
-  {
-    id: 'init_q',
-    symbol: 'q',
-    nameZh: '舌面前送气清塞擦音',
-    category: 'initial',
-    anchorChar: '七',
-    anchorWord: '数字七 (qī)',
-    pinyin: 'qī',
-    ipa: '[tɕʰ]',
-    audioGuideEn: 'Like "cheep" with sharp air release',
-    mouthGuideZh: '发音部位同 j，但突然放开时有强气流冲出。',
-    audioSpeechText: '七，数字七的七',
-  },
-  {
-    id: 'init_x',
-    symbol: 'x',
-    nameZh: '舌面前清擦音',
-    category: 'initial',
-    anchorChar: '西',
-    anchorWord: '西方 (xī)',
-    pinyin: 'xī',
-    ipa: '[ɕ]',
-    audioGuideEn: 'Like "sheep" with tongue tip resting on lower teeth',
-    mouthGuideZh: '舌尖抵住下齿背，舌面前部靠近硬腭形成缝隙，气流摩擦而出。',
-    audioSpeechText: '西，谢谢的谢',
-  },
-  {
-    id: 'init_zh',
-    symbol: 'zh',
-    nameZh: '舌尖后不送气清塞擦音 (翘舌)',
-    category: 'initial',
-    anchorChar: '知',
-    anchorWord: '知道 (zhī)',
-    pinyin: 'zhī',
-    ipa: '[ʈʂ]',
-    audioGuideEn: 'Curl tongue tip up towards hard palate, unaspirated',
-    mouthGuideZh: '【核心翘舌音】舌尖向上翘起抵住硬腭前部，然后微开，挤出微弱气流。',
-    audioSpeechText: '知，中国的中',
-  },
-  {
-    id: 'init_ch',
-    symbol: 'ch',
-    nameZh: '舌尖后送气清塞擦音 (翘舌)',
-    category: 'initial',
-    anchorChar: '吃',
-    anchorWord: '吃饭 (chī)',
-    pinyin: 'chī',
-    ipa: '[ʈʂʰ]',
-    audioGuideEn: 'Curl tongue tip up, burst with strong puff of air',
-    mouthGuideZh: '【核心翘舌音】舌尖翘起抵硬腭，放开时喷出一股强气流，如“吃”。',
-    audioSpeechText: '吃，吃饭的吃',
-  },
-  {
-    id: 'init_sh',
-    symbol: 'sh',
-    nameZh: '舌尖后清擦音 (翘舌)',
-    category: 'initial',
-    anchorChar: '诗',
-    anchorWord: '老师 (shī)',
-    pinyin: 'shī',
-    ipa: '[ʂ]',
-    audioGuideEn: 'Curl tongue tip up, whispery smooth friction',
-    mouthGuideZh: '【核心翘舌音】舌尖翘起接近硬腭留出窄缝，气流摩擦而出。',
-    audioSpeechText: '诗，老师的师',
-  },
-  {
-    id: 'init_r',
-    symbol: 'r',
-    nameZh: '舌尖后浊擦音 (翘舌浊音)',
-    category: 'initial',
-    anchorChar: '日',
-    anchorWord: '日子 (rì)',
-    pinyin: 'rì',
-    ipa: '[ʐ]',
-    audioGuideEn: 'Like "measure", curled tongue with vocal cord vibration',
-    mouthGuideZh: '【核心翘舌音】发音部位同 sh，但声带强烈振动发出浊音。',
-    audioSpeechText: '日，中国人的日',
-  },
-  {
-    id: 'init_z',
-    symbol: 'z',
-    nameZh: '舌尖前不送气清塞擦音 (平舌)',
-    category: 'initial',
-    anchorChar: '资',
-    anchorWord: '资源 (zī)',
-    pinyin: 'zī',
-    ipa: '[ts]',
-    audioGuideEn: 'Like "cats" with flat tongue pointing forward',
-    mouthGuideZh: '【平舌音】舌尖平伸抵住上齿背，微开阻碍，微弱气流摩擦挤出。',
-    audioSpeechText: '资，再见的在',
-  },
-  {
-    id: 'init_c',
-    symbol: 'c',
-    nameZh: '舌尖前送气清塞擦音 (平舌)',
-    category: 'initial',
-    anchorChar: '疵',
-    anchorWord: '瑕疵 (cī)',
-    pinyin: 'cī',
-    ipa: '[tsʰ]',
-    audioGuideEn: 'Like "tsunami" with strong puff of air',
-    mouthGuideZh: '【平舌音】舌尖平伸抵住上齿背，突然微开，喷出强气流。',
-    audioSpeechText: '疵，从前的从',
-  },
-  {
-    id: 'init_s',
-    symbol: 's',
-    nameZh: '舌尖前清擦音 (平舌)',
-    category: 'initial',
-    anchorChar: '思',
-    anchorWord: '思念 (sī)',
-    pinyin: 'sī',
-    ipa: '[s]',
-    audioGuideEn: 'Like "sun" with flat tongue tip',
-    mouthGuideZh: '【平舌音】舌尖平伸接近上齿背留缝，气流摩擦而出。',
-    audioSpeechText: '思，三四的三',
-  },
-  {
-    id: 'init_y',
-    symbol: 'y',
-    nameZh: '零声母起笔 (对应 i)',
-    category: 'initial',
-    anchorChar: '衣',
-    anchorWord: '衣服 (yī)',
-    pinyin: 'yī',
-    ipa: '[j]',
-    audioGuideEn: 'Semi-vowel glide like "yes"',
-    mouthGuideZh: '作为零声母音节开头的滑音，口型扁平向两边舒展。',
-    audioSpeechText: '衣，衣服的衣',
-  },
-  {
-    id: 'init_w',
-    symbol: 'w',
-    nameZh: '零声母起笔 (对应 u)',
-    category: 'initial',
-    anchorChar: '乌',
-    anchorWord: '乌云 (wū)',
-    pinyin: 'wū',
-    ipa: '[w]',
-    audioGuideEn: 'Semi-vowel glide like "water"',
-    mouthGuideZh: '作为零声母音节开头的滑音，双唇向前收圆突出。',
-    audioSpeechText: '乌，我爱你的我',
-  },
+  { id: 'init_b', symbol: 'b', category: 'initial', anchorChar: '八', anchorWord: '八 (bā)', pinyin: 'bō', ipa: '[p]', audioGuideEn: 'Like "p" in "speak" (unaspirated)', audioSpeechText: '八' },
+  { id: 'init_p', symbol: 'p', category: 'initial', anchorChar: '坡', anchorWord: '坡 (pō)', pinyin: 'pō', ipa: '[pʰ]', audioGuideEn: 'Like "p" in "peak" (aspirated puff)', audioSpeechText: '坡' },
+  { id: 'init_m', symbol: 'm', category: 'initial', anchorChar: '摸', anchorWord: '摸 (mō)', pinyin: 'mō', ipa: '[m]', audioGuideEn: 'Like "m" in "mother"', audioSpeechText: '摸' },
+  { id: 'init_f', symbol: 'f', category: 'initial', anchorChar: '佛', anchorWord: '佛 (fó)', pinyin: 'fó', ipa: '[f]', audioGuideEn: 'Like "f" in "fish"', audioSpeechText: '佛' },
+  { id: 'init_d', symbol: 'd', category: 'initial', anchorChar: '大', anchorWord: '大 (dà)', pinyin: 'dē', ipa: '[t]', audioGuideEn: 'Like "t" in "stop" (unaspirated)', audioSpeechText: '大' },
+  { id: 'init_t', symbol: 't', category: 'initial', anchorChar: '他', anchorWord: '他 (tā)', pinyin: 'tē', ipa: '[tʰ]', audioGuideEn: 'Like "t" in "tea" (aspirated puff)', audioSpeechText: '他' },
+  { id: 'init_n', symbol: 'n', category: 'initial', anchorChar: '你', anchorWord: '你 (nǐ)', pinyin: 'nē', ipa: '[n]', audioGuideEn: 'Like "n" in "nice"', audioSpeechText: '你' },
+  { id: 'init_l', symbol: 'l', category: 'initial', anchorChar: '来', anchorWord: '来 (lái)', pinyin: 'lē', ipa: '[l]', audioGuideEn: 'Like "l" in "love"', audioSpeechText: '来' },
+  { id: 'init_g', symbol: 'g', category: 'initial', anchorChar: '哥', anchorWord: '哥 (gē)', pinyin: 'gē', ipa: '[k]', audioGuideEn: 'Like "k" in "skill" (unaspirated)', audioSpeechText: '哥' },
+  { id: 'init_k', symbol: 'k', category: 'initial', anchorChar: '开', anchorWord: '开 (kāi)', pinyin: 'kē', ipa: '[kʰ]', audioGuideEn: 'Like "k" in "kite" (aspirated puff)', audioSpeechText: '开' },
+  { id: 'init_h', symbol: 'h', category: 'initial', anchorChar: '喝', anchorWord: '喝 (hē)', pinyin: 'hē', ipa: '[x]', audioGuideEn: 'Like "h" in "hat" (rougher throat sound)', audioSpeechText: '喝' },
+  { id: 'init_j', symbol: 'j', category: 'initial', anchorChar: '几', anchorWord: '几 (jǐ)', pinyin: 'jī', ipa: '[tɕ]', audioGuideEn: 'Like "j" in "jeep" with flat tongue', audioSpeechText: '几' },
+  { id: 'init_q', symbol: 'q', category: 'initial', anchorChar: '七', anchorWord: '七 (qī)', pinyin: 'qī', ipa: '[tɕʰ]', audioGuideEn: 'Like "ch" in "cheese" with flat tongue & puff', audioSpeechText: '七' },
+  { id: 'init_x', symbol: 'x', category: 'initial', anchorChar: '西', anchorWord: '西 (xī)', pinyin: 'xī', ipa: '[ɕ]', audioGuideEn: 'Like "sh" in "sheep" with corners of mouth pulled wide', audioSpeechText: '西' },
+  { id: 'init_zh', symbol: 'zh', category: 'initial', anchorChar: '知', anchorWord: '知 (zhī)', pinyin: 'zhī', ipa: '[tʂ]', audioGuideEn: 'Retroflex: tongue tip curled back (like "j" in "jump")', audioSpeechText: '知' },
+  { id: 'init_ch', symbol: 'ch', category: 'initial', anchorChar: '吃', anchorWord: '吃 (chī)', pinyin: 'chī', ipa: '[tʂʰ]', audioGuideEn: 'Retroflex: tongue tip curled back with strong puff of air', audioSpeechText: '吃' },
+  { id: 'init_sh', symbol: 'sh', category: 'initial', anchorChar: '十', anchorWord: '十 (shí)', pinyin: 'shī', ipa: '[ʂ]', audioGuideEn: 'Retroflex: tongue tip curled back, unvoiced hiss', audioSpeechText: '十' },
+  { id: 'init_r', symbol: 'r', category: 'initial', anchorChar: '日', anchorWord: '日 (rì)', pinyin: 'rī', ipa: '[ʐ]', audioGuideEn: 'Retroflex: tongue tip curled back, voiced buzz (like "s" in "measure")', audioSpeechText: '日' },
+  { id: 'init_z', symbol: 'z', category: 'initial', anchorChar: '字', anchorWord: '字 (zì)', pinyin: 'zī', ipa: '[ts]', audioGuideEn: 'Dental: like "ds" in "reads" behind teeth', audioSpeechText: '字' },
+  { id: 'init_c', symbol: 'c', category: 'initial', anchorChar: '词', anchorWord: '词 (cí)', pinyin: 'cī', ipa: '[tsʰ]', audioGuideEn: 'Dental: like "ts" in "cats" with strong puff', audioSpeechText: '词' },
+  { id: 'init_s', symbol: 's', category: 'initial', anchorChar: '四', anchorWord: '四 (sì)', pinyin: 'sī', ipa: '[s]', audioGuideEn: 'Dental: like "s" in "sun" behind teeth', audioSpeechText: '四' },
+  { id: 'init_y', symbol: 'y', category: 'initial', anchorChar: '一', anchorWord: '一 (yī)', pinyin: 'yī', ipa: '[j]', audioGuideEn: 'Semi-vowel: like "y" in "yes"', audioSpeechText: '一' },
+  { id: 'init_w', symbol: 'w', category: 'initial', anchorChar: '五', anchorWord: '五 (wǔ)', pinyin: 'wū', ipa: '[w]', audioGuideEn: 'Semi-vowel: like "w" in "water"', audioSpeechText: '五' },
 ];
 
-// Finals (韵母: 6 simple finals + key compound & nasal finals)
-export const PINYIN_FINALS: PinyinPhonemeItem[] = [
-  {
-    id: 'fin_a',
-    symbol: 'a',
-    nameZh: '舌面央低不圆唇元音',
-    category: 'simple_final',
-    anchorChar: '啊',
-    anchorWord: '啊 (ā)',
-    pinyin: 'ā',
-    ipa: '[a]',
-    audioGuideEn: 'Open wide like saying "ah" at doctor',
-    mouthGuideZh: '口腔大开，舌头自然放平，嘴唇呈自然展开状。',
-    audioSpeechText: '啊，大声念啊',
-  },
-  {
-    id: 'fin_o',
-    symbol: 'o',
-    nameZh: '舌面后半高圆唇元音',
-    category: 'simple_final',
-    anchorChar: '喔',
-    anchorWord: '喔喔 (ō)',
-    pinyin: 'ō',
-    ipa: '[o]',
-    audioGuideEn: 'Round lips into an "O" shape like "or"',
-    mouthGuideZh: '舌头后缩，嘴唇自然收圆，声带振动发音。',
-    audioSpeechText: '喔，圆圆的喔',
-  },
-  {
-    id: 'fin_e',
-    symbol: 'e',
-    nameZh: '舌面后半高不圆唇元音',
-    category: 'simple_final',
-    anchorChar: '鹅',
-    anchorWord: '白鹅 (é)',
-    pinyin: 'é',
-    ipa: '[ɤ]',
-    audioGuideEn: 'Say "uh" with lips flat and relaxed',
-    mouthGuideZh: '发音部位同 o，但双唇向两边自然咧开，不收圆。',
-    audioSpeechText: '鹅，白鹅的鹅',
-  },
-  {
-    id: 'fin_i',
-    symbol: 'i',
-    nameZh: '舌面前高不圆唇元音',
-    category: 'simple_final',
-    anchorChar: '衣',
-    anchorWord: '衣服 (yī)',
-    pinyin: 'yī',
-    ipa: '[i]',
-    audioGuideEn: 'Like "ee" in "see" with smiling lips',
-    mouthGuideZh: '舌面前部向硬腭抬起，双唇扁平成微笑状。',
-    audioSpeechText: '衣，一二的一',
-  },
-  {
-    id: 'fin_u',
-    symbol: 'u',
-    nameZh: '舌面后高圆唇元音',
-    category: 'simple_final',
-    anchorChar: '乌',
-    anchorWord: '乌龟 (wū)',
-    pinyin: 'wū',
-    ipa: '[u]',
-    audioGuideEn: 'Like "oo" in "moon" with small rounded lips',
-    mouthGuideZh: '舌头后缩向上抬起，嘴唇收得极圆极小并向前突出。',
-    audioSpeechText: '乌，五六的五',
-  },
-  {
-    id: 'fin_u_umlaut',
-    symbol: 'ü',
-    nameZh: '舌面前高圆唇元音 (高难度核心)',
-    category: 'simple_final',
-    anchorChar: '迂',
-    anchorWord: '金鱼 (yú)',
-    pinyin: 'yú',
-    ipa: '[y]',
-    audioGuideEn: 'Shape lips for "oo", but say "ee"! (French "u", German "ü")',
-    mouthGuideZh: '【30年教学秘诀】先发标准的“i(衣)”，舌头绝对不动，然后直接把嘴唇收圆噘起！',
-    audioSpeechText: '迂，金鱼的鱼',
-  },
-  {
-    id: 'fin_ai',
-    symbol: 'ai',
-    nameZh: '前响复韵母',
-    category: 'compound_final',
-    anchorChar: '哀',
-    anchorWord: '爱心 (ài)',
-    pinyin: 'āi',
-    ipa: '[aɪ]',
-    audioGuideEn: 'Like "eye" or "buy"',
-    mouthGuideZh: '由 a 快速滑向 i，前重后轻，开口度由大变小。',
-    audioSpeechText: '哀，爱心的爱',
-  },
-  {
-    id: 'fin_ei',
-    symbol: 'ei',
-    nameZh: '前响复韵母',
-    category: 'compound_final',
-    anchorChar: '诶',
-    anchorWord: '杯子 (bēi)',
-    pinyin: 'ēi',
-    ipa: '[eɪ]',
-    audioGuideEn: 'Like "ay" in "say"',
-    mouthGuideZh: '由 e 快速滑向 i，口型扁平，过渡自然。',
-    audioSpeechText: '诶，杯子的杯',
-  },
-  {
-    id: 'fin_ao',
-    symbol: 'ao',
-    nameZh: '前响复韵母',
-    category: 'compound_final',
-    anchorChar: '熬',
-    anchorWord: '高大 (gāo)',
-    pinyin: 'āo',
-    ipa: '[aʊ]',
-    audioGuideEn: 'Like "ow" in "how"',
-    mouthGuideZh: '由 a 快速滑向 o/u，嘴型由大圆变为小圆。',
-    audioSpeechText: '熬，高大的高',
-  },
-  {
-    id: 'fin_ou',
-    symbol: 'ou',
-    nameZh: '前响复韵母',
-    category: 'compound_final',
-    anchorChar: '欧',
-    anchorWord: '朋友 (pénɡyou)',
-    pinyin: 'ōu',
-    ipa: '[oʊ]',
-    audioGuideEn: 'Like "o" in "so"',
-    mouthGuideZh: '由 o 滑向 u，嘴唇由圆变拢小。',
-    audioSpeechText: '欧，朋友的友',
-  },
-  {
-    id: 'fin_an',
-    symbol: 'an',
-    nameZh: '前鼻音韵母',
-    category: 'nasal_final',
-    anchorChar: '安',
-    anchorWord: '天安门 (ān)',
-    pinyin: 'ān',
-    ipa: '[an]',
-    audioGuideEn: 'Like "an" in "pan", tongue tip touches upper gum',
-    mouthGuideZh: '发 a 之后，舌尖迅速抵住上齿龈阻气，气流从鼻腔出。',
-    audioSpeechText: '安，平安的安',
-  },
-  {
-    id: 'fin_ang',
-    symbol: 'ang',
-    nameZh: '后鼻音韵母',
-    category: 'nasal_final',
-    anchorChar: '昂',
-    anchorWord: '商场 (shānɡ)',
-    pinyin: 'ánɡ',
-    ipa: '[aŋ]',
-    audioGuideEn: 'Like "song", back of tongue raises to soft palate',
-    mouthGuideZh: '发 a 之后，舌根抬起抵住软腭，鼻腔共鸣深沉。',
-    audioSpeechText: '昂，高昂的昂',
-  },
-];
+// Clean Audio Playback Engine with /api/tts priority & SpeechSynthesis fallback
+const audioCache = new Map<string, HTMLAudioElement>();
 
-// The 4 Mandarin Tones with 5-Degree Scale (四声与五度调值)
-export const PINYIN_TONES = [
-  {
-    toneIndex: 1,
-    toneNameZh: '第一声 · 阴平 (High & Flat)',
-    toneMark: 'mā',
-    pitchValue: '55',
-    pitchName: '高平调',
-    contourVisual: 'M 10 20 L 90 20',
-    color: '#0284c7',
-    iconChar: '妈',
-    audioText: '妈，第一声，高而平',
-    audioGuideEn: 'Maintain pitch at the highest level (5-5). High, singing sound.',
-    teacherTipZh: '30年经验秘诀：就像合唱团唱高音拉长拍，不升不降，保持平稳！',
-    contrastPairs: ['mā (妈)', 'má (麻)', 'mǎ (马)', 'mà (骂)'],
-  },
-  {
-    toneIndex: 2,
-    toneNameZh: '第二声 · 阳平 (High-Rising)',
-    toneMark: 'má',
-    pitchValue: '35',
-    pitchName: '高升调',
-    contourVisual: 'M 10 60 L 90 20',
-    color: '#10b981',
-    iconChar: '麻',
-    audioText: '麻，第二声，中升到高',
-    audioGuideEn: 'Rise steadily from middle (3) to highest pitch (5).',
-    teacherTipZh: '30年经验秘诀：就像听到不可思议的事惊讶地问：“啊？什么？真的吗？”，音调迅速往上扬！',
-    contrastPairs: ['bō (波)', 'bó (伯)', 'bǒ (跛)', 'bò (擘)'],
-  },
-  {
-    toneIndex: 3,
-    toneNameZh: '第三声 · 上声 (Low Dipping-Rising)',
-    toneMark: 'mǎ',
-    pitchValue: '214',
-    pitchName: '降升拐弯调',
-    contourVisual: 'M 10 40 Q 50 75 90 30',
-    color: '#f59e0b',
-    iconChar: '马',
-    audioText: '马，第三声，降下去再升起',
-    audioGuideEn: 'Dip down to the lowest register (1), then gently rise up.',
-    teacherTipZh: '30年经验秘诀：关键是“沉到底”！很多初学者只顾往上升，其实把声音压到最低谷才是精髓（在句中念半三声21）。',
-    contrastPairs: ['nǐ (你)', 'hǎo (好)', 'wǒ (我)', 'mǎ (马)'],
-  },
-  {
-    toneIndex: 4,
-    toneNameZh: '第四声 · 去声 (Sharp Falling)',
-    toneMark: 'mà',
-    pitchValue: '51',
-    pitchName: '全降调',
-    contourVisual: 'M 10 20 L 90 75',
-    color: '#ef4444',
-    iconChar: '骂',
-    audioText: '骂，第四声，从最高快速降到底',
-    audioGuideEn: 'Drop decisively from top pitch (5) straight down to bottom (1).',
-    teacherTipZh: '30年经验秘诀：短促、干脆、果断！就像坚决拒绝说“不！”或者感叹“去！”一样，绝不拖泥带水。',
-    contrastPairs: ['dà (大)', 'bà (爸)', 'zài (再)', 'jiàn (见)'],
-  },
-];
-
-// Tone Sandhi Rules (核心变调法则)
-export const TONE_SANDHI_RULES = [
-  {
-    id: 'sandhi_33',
-    titleZh: '三声相连变调 (3rd + 3rd → 2nd + 3rd)',
-    ruleFormula: '3 + 3 → 2 + 3',
-    exampleZh: '你好',
-    writtenPinyin: 'nǐ hǎo',
-    actualPinyin: 'ní hǎo',
-    meaningEn: 'Hello',
-    explanationZh: '当两个第三声连续出现时，前一个第三声自动变成第二声！拼写仍写作 nǐ hǎo，但说话时口语自然读作 ní hǎo。',
-    explanationEn: 'When two 3rd tones meet, the first turns into a 2nd tone. Spelled "nǐ hǎo", pronounced "ní hǎo".',
-    audioText: '你好，拼写是三声加三声，实际念做第二声加第三声：你好',
-  },
-  {
-    id: 'sandhi_bu',
-    titleZh: '“不”的四声前变调 (bù + 4th → bú)',
-    ruleFormula: 'bù + 4声 → bú + 4声',
-    exampleZh: '不是 / 不对',
-    writtenPinyin: 'bù shì / bù duì',
-    actualPinyin: 'bú shì / bú duì',
-    meaningEn: 'Is not / Incorrect',
-    explanationZh: '“不”本调是第四声 (bù)。当它后面跟着另一个第四声字时，为了发音顺畅，“不”必须变成第二声 (bú)！如果后面是1/2/3声，则保持第四声 (如 bù hē, bù lái, bù hǎo)。',
-    explanationEn: '"bù" is naturally 4th tone, but turns to 2nd tone "bú" before another 4th tone word (bú shì).',
-    audioText: '不是，后面是第四声，所以不读第二声：不是',
-  },
-  {
-    id: 'sandhi_yi',
-    titleZh: '“一”的随韵变调 (yī sandhi)',
-    ruleFormula: 'yī + 4声 → yí | yī + 1/2/3声 → yì',
-    exampleZh: '一个 / 一天 / 一起',
-    writtenPinyin: 'yī gè / yī tiān / yī qǐ',
-    actualPinyin: 'yí gè / yì tiān / yì qǐ',
-    meaningEn: 'One / One day / Together',
-    explanationZh: '“一”单独数数念一声 (yī)。在第四声前念二声 (yí gè)；在第一、二、三声前念四声 (yì tiān, yì nián, yì qǐ)！这是地道中文的标志。',
-    explanationEn: '"yī" becomes 2nd tone before 4th tones (yí gè), and 4th tone before others (yì tiān).',
-    audioText: '一个，在四声前读二声：一个；在一天前读四声：一天',
-  },
-];
-
-// Smooth, Native Mandarin Audio Speech Engine
 export const playMandarinAudio = (
   text: string,
   options?: {
-    rate?: number; // 0.6 = slow demonstration, 0.9 = natural native pace
+    rate?: number; // default 0.85 (slightly paced for learning), 0.65 for slow
     pitch?: number;
     onStart?: () => void;
     onEnd?: () => void;
   }
 ) => {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    console.warn('Speech synthesis not supported');
-    return;
-  }
+  if (typeof window === 'undefined') return;
 
+  const cleanText = text.trim();
+  if (!cleanText) return;
+
+  // Function to fallback to SpeechSynthesis
+  const fallbackSpeech = () => {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = 'zh-CN';
+      utterance.rate = options?.rate ?? 0.85;
+      utterance.pitch = options?.pitch ?? 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const zhVoice = voices.find(
+        (v) => v.lang.startsWith('zh') || v.lang.includes('cmn') || v.name.toLowerCase().includes('chinese')
+      );
+      if (zhVoice) {
+        utterance.voice = zhVoice;
+      }
+
+      if (options?.onStart) utterance.onstart = options.onStart;
+      if (options?.onEnd) utterance.onend = options.onEnd;
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error('SpeechSynthesis failed:', err);
+      if (options?.onEnd) options.onEnd();
+    }
+  };
+
+  // Try high-quality /api/tts endpoint first
   try {
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = options?.rate ?? 0.85; // slightly paced for clear phonetic perception
-    utterance.pitch = options?.pitch ?? 1.0;
-
-    // Pick Chinese voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const zhVoice = voices.find(
-      (v) => v.lang.startsWith('zh') || v.lang.includes('cmn') || v.name.toLowerCase().includes('chinese')
-    );
-    if (zhVoice) {
-      utterance.voice = zhVoice;
+    const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}`;
+    const audio = new Audio(ttsUrl);
+    if (options?.rate && options.rate !== 1.0) {
+      audio.playbackRate = options.rate;
     }
 
-    if (options?.onStart) utterance.onstart = options.onStart;
-    if (options?.onEnd) utterance.onend = options.onEnd;
+    let started = false;
+    audio.onplay = () => {
+      started = true;
+      if (options?.onStart) options.onStart();
+    };
 
-    window.speechSynthesis.speak(utterance);
+    audio.onended = () => {
+      if (options?.onEnd) options.onEnd();
+    };
+
+    audio.onerror = () => {
+      // Fall back to browser native speech synthesis
+      fallbackSpeech();
+    };
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        fallbackSpeech();
+      });
+    }
   } catch (err) {
-    console.error('Audio playback failed:', err);
+    fallbackSpeech();
   }
 };
+
+export interface PronunciationMatchResult {
+  score: number; // 0 to 100
+  recognizedText: string;
+  targetText: string;
+  matched: boolean;
+  feedback: string;
+  toneAssessment?: string;
+}
+
+export function evaluatePronunciation(
+  transcript: string,
+  targetHanzi: string,
+  targetPinyin: string,
+  acceptableMatches?: string[]
+): PronunciationMatchResult {
+  const normTrans = transcript.trim().toLowerCase();
+  const normHanzi = targetHanzi.trim().toLowerCase();
+  const normPinyin = targetPinyin.trim().toLowerCase().replace(/[\s\-_]/g, '');
+
+  const targets = [
+    normHanzi,
+    normPinyin,
+    targetPinyin.toLowerCase(),
+    ...(acceptableMatches || []).map((m) => m.toLowerCase().trim()),
+  ];
+
+  // Exact character or exact pinyin match
+  if (targets.some((t) => normTrans === t || normTrans.includes(t) || t.includes(normTrans))) {
+    return {
+      score: 96,
+      recognizedText: transcript,
+      targetText: targetHanzi || targetPinyin,
+      matched: true,
+      feedback: 'Excellent pronunciation! Crisp articulation and native accuracy.',
+      toneAssessment: 'Tone pitch contour accurately produced.',
+    };
+  }
+
+  // Partial or fuzzy match
+  if (normTrans.length > 0) {
+    // Check if initial or final matches roughly
+    const isClose = targets.some((t) => {
+      if (t.length >= 2 && normTrans.length >= 2) {
+        return t.slice(0, 2) === normTrans.slice(0, 2) || t.slice(-2) === normTrans.slice(-2);
+      }
+      return false;
+    });
+
+    if (isClose) {
+      return {
+        score: 82,
+        recognizedText: transcript,
+        targetText: targetHanzi || targetPinyin,
+        matched: true,
+        feedback: 'Good effort! Intelligible, with minor pitch or vowel coloration nuance.',
+        toneAssessment: 'Slight tone glide difference detected.',
+      };
+    }
+
+    return {
+      score: 65,
+      recognizedText: transcript,
+      targetText: targetHanzi || targetPinyin,
+      matched: false,
+      feedback: `Detected "${transcript}". Focus on tongue placement and try again!`,
+      toneAssessment: 'Tone contour differed from native standard.',
+    };
+  }
+
+  return {
+    score: 50,
+    recognizedText: '(No clear sound detected)',
+    targetText: targetHanzi || targetPinyin,
+    matched: false,
+    feedback: 'No voice was captured. Please check microphone and speak louder.',
+    toneAssessment: 'Unclear sound',
+  };
+}

@@ -26,6 +26,7 @@ interface CurriculumRoadmapViewProps {
   goal: LearningGoal | null;
   onStartStudy: (conceptId: string, isPinyin: boolean) => void;
   onUpdateGoal: (goal: Partial<LearningGoal>) => void;
+  onOpenProfile?: () => void;
 }
 
 export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
@@ -34,6 +35,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
   goal,
   onStartStudy,
   onUpdateGoal,
+  onOpenProfile,
 }) => {
   const [activeModuleTab, setActiveModuleTab] = useState<'all' | 'module1' | 'module2' | 'module3'>('all');
   const [showPedagogyExplanation, setShowPedagogyExplanation] = useState(false);
@@ -86,20 +88,21 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
   });
 
   // Helper to inspect node status
-  // 1. Unlocked: Previous node is completed OR it is the very first node of the module
-  // 2. Completed (学完 100%): Mastery score >= 0.65 or marked completed
-  // 3. Mastered (掌握 100%): Mastery score >= 0.85
+  // 1. Unlocked: Previous node is learned (学完) OR it is the very first node of the module
+  // 2. Learned (学完 100%): Mastery score >= 0.65 or marked learned in session
+  // 3. Mastered (掌握 100%): Verified retained mastery score >= 0.85 (Ebbinghaus curve)
   const getNodeProgress = (concept: CurriculumConcept, moduleList: CurriculumConcept[], idx: number) => {
     const mastery = learnerState?.mastery?.[concept.conceptId];
     const score = mastery?.masteryScore || 0;
     const isMastered = score >= 0.85;
-    const isCompleted = score >= 0.65 || isMastered;
+    const isCompleted = score >= 0.65 || isMastered || (mastery?.evidenceCount || 0) > 0;
 
-    // A node is unlocked if it's the first in the module or the previous one is completed
+    // A node is unlocked if it's the first in the module or the previous one is learned
     const isFirst = idx === 0;
     const prevConcept = isFirst ? null : moduleList[idx - 1];
-    const prevScore = prevConcept ? learnerState?.mastery?.[prevConcept.conceptId]?.masteryScore || 0 : 1;
-    const isUnlocked = isFirst || prevScore >= 0.65;
+    const prevMastery = prevConcept ? learnerState?.mastery?.[prevConcept.conceptId] : null;
+    const prevLearned = isFirst || (prevMastery && (prevMastery.masteryScore >= 0.65 || (prevMastery.evidenceCount || 0) > 0));
+    const isUnlocked = isFirst || Boolean(prevLearned);
     const isCurrentActive = isUnlocked && !isCompleted;
 
     return {
@@ -119,8 +122,9 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
     let masteredCount = 0;
 
     for (const c of moduleList) {
-      const score = learnerState?.mastery?.[c.conceptId]?.masteryScore || 0;
-      if (score >= 0.65) completedCount++;
+      const mastery = learnerState?.mastery?.[c.conceptId];
+      const score = mastery?.masteryScore || 0;
+      if (score >= 0.65 || (mastery?.evidenceCount || 0) > 0) completedCount++;
       if (score >= 0.85) masteredCount++;
     }
 
@@ -202,12 +206,12 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             </p>
           </div>
 
-          {/* Module 2-Tier Progress Pills: Completed vs Solid */}
+          {/* Module 2-Tier Progress Pills: Learned vs Mastered */}
           <div className="flex items-center gap-2.5">
-            {/* Completed Pill */}
+            {/* Learned Pill */}
             <div className="px-3.5 py-2 rounded-2xl bg-zinc-50 border border-zinc-200 flex flex-col items-center">
               <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">
-                Completed
+                Learned
               </span>
               <span className="text-sm font-black text-emerald-600">
                 {stats.completedPct}%
@@ -274,17 +278,17 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                       ) : node.isMastered ? (
                         <>
                           <Crown className="w-6 h-6 text-zinc-950 fill-zinc-950" />
-                          <span className="text-[10px] font-black mt-0.5">Solid</span>
+                          <span className="text-[10px] font-black mt-0.5">Mastered</span>
                         </>
                       ) : node.isCompleted ? (
                         <>
                           <Check className="w-7 h-7 stroke-[3]" />
-                          <span className="text-[10px] font-black mt-0.5">Done</span>
+                          <span className="text-[10px] font-black mt-0.5">Learned</span>
                         </>
                       ) : (
                         <>
                           <Zap className="w-6 h-6 text-emerald-600 fill-emerald-600 animate-pulse" />
-                          <span className="text-[10px] font-black mt-0.5">Ready</span>
+                          <span className="text-[10px] font-black mt-0.5">Start</span>
                         </>
                       )}
                     </button>
@@ -315,14 +319,14 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Done: {node.isCompleted ? '100%' : '0%'}
+                          Learned: {node.isCompleted ? '100%' : '0%'}
                         </span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                           node.isMastered 
                             ? 'bg-amber-100 text-amber-800 border border-amber-300 font-black' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Solid: {Math.round(node.score * 100)}%
+                          Mastered: {Math.round(node.score * 100)}%
                         </span>
                       </div>
                     </div>
@@ -364,7 +368,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             className="px-4 py-2 rounded-2xl border-2 border-zinc-200 hover:border-zinc-950 bg-zinc-50 text-zinc-800 text-xs font-black flex items-center gap-2 cursor-pointer transition-all self-start sm:self-center"
           >
             <Info className="w-4 h-4 text-emerald-600" />
-            <span>Completed vs. Mastered</span>
+            <span>Learned vs. Mastered</span>
           </button>
         </div>
 
@@ -378,20 +382,20 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               <div className="p-3.5 bg-white rounded-xl border border-amber-200 space-y-1">
                 <div className="font-black text-emerald-700 flex items-center gap-1.5 text-xs">
                   <Check className="w-4 h-4" />
-                  <span>Completed (Seen & Practiced)</span>
+                  <span>Learned (Studied & Practiced)</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 leading-relaxed">
-                  You have reviewed the lesson and completed initial practice. Periodic spaced review is required to prevent memory decay.
+                  You have completed the lesson and practice. Subsequent lessons are unlocked immediately. Spaced reviews are scheduled to retain it.
                 </p>
               </div>
 
               <div className="p-3.5 bg-white rounded-xl border border-amber-200 space-y-1">
                 <div className="font-black text-amber-700 flex items-center gap-1.5 text-xs">
                   <Crown className="w-4 h-4 fill-amber-500 text-amber-500" />
-                  <span>Mastered (Retained)</span>
+                  <span>Mastered (Retained via Ebbinghaus)</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 leading-relaxed">
-                  Verified through active recall in spaced reviews with 85%+ accuracy, forming long-term reflex memory.
+                  Verified through spaced reviews with 85%+ retention accuracy according to the Ebbinghaus forgetting curve, locking it into long-term reflex memory.
                 </p>
               </div>
             </div>
@@ -418,14 +422,14 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             <div className="text-xs font-bold text-slate-400">
               {isMilestone1Complete ? (
                 <span className="text-emerald-400 font-black flex items-center gap-1.5">
-                  <Award className="w-4 h-4" /> Milestone Completed!
+                  <Award className="w-4 h-4" /> Milestone Mastered!
                 </span>
               ) : isMilestone1Learned ? (
                 <span className="text-amber-400 font-black">
-                  All lessons completed! Review to reach 100% mastery.
+                  All lessons learned! Complete reviews to reach 100% mastery.
                 </span>
               ) : (
-                <span>Complete all 3 modules to unlock.</span>
+                <span>Learn all 3 modules to unlock.</span>
               )}
             </div>
           </div>
@@ -446,8 +450,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Done: {m1Stats.completedPct}%</span>
-                  <span className="text-amber-300">Solid: {m1Stats.masteredPct}%</span>
+                  <span>Learned: {m1Stats.completedPct}%</span>
+                  <span className="text-amber-300">Mastered: {m1Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -472,8 +476,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Done: {m2Stats.completedPct}%</span>
-                  <span className="text-amber-300">Solid: {m2Stats.masteredPct}%</span>
+                  <span>Learned: {m2Stats.completedPct}%</span>
+                  <span className="text-amber-300">Mastered: {m2Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -498,8 +502,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               </div>
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-slate-400">
-                  <span>Done: {m3Stats.completedPct}%</span>
-                  <span className="text-amber-300">Solid: {m3Stats.masteredPct}%</span>
+                  <span>Learned: {m3Stats.completedPct}%</span>
+                  <span className="text-amber-300">Mastered: {m3Stats.masteredPct}%</span>
                 </div>
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
@@ -509,37 +513,6 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Module 3 Goal & Interest Linkage Selector */}
-        <div className="pt-2">
-          <div className="flex items-center justify-between mb-2.5">
-            <span className="text-xs font-black text-zinc-600 uppercase tracking-wider">
-              🎯 Module 3 Focus Priority:
-            </span>
-            <span className="text-[11px] font-bold text-emerald-700">
-              Active: {activePreset.badge || activePreset.titleEn}
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {GOAL_PRESETS.map((preset) => {
-              const isSelected = preset.id === activeTargetDomain;
-              return (
-                <button
-                  key={preset.id}
-                  onClick={() => handleSelectDomain(preset.id as any)}
-                  className={`px-3.5 py-2 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                    isSelected
-                      ? 'bg-zinc-950 text-white shadow-[0_3px_0_#27272a]'
-                      : 'bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 border border-zinc-200'
-                  }`}
-                >
-                  <span>{preset.badge || preset.titleEn}</span>
-                </button>
-              );
-            })}
           </div>
         </div>
 
