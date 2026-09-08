@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from typing import Sequence
 import streamlit as st
 
 DB_PATH = Path(__file__).resolve().parent / "data" / "goalcoach_streamlit.sqlite"
+CONTENT_SQL_PATH = Path(__file__).resolve().parent / "data/database1/GoalCoach_HSK1_Learning_DB_Package/data/goalcoach_hsk1_learning_db_sqlite.sql"
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +154,48 @@ EXERCISES = (
     ("hsk1_c10", "Say: I want to drink tea.", "我想喝茶", "我想喝茶"),
     ("hsk1_c20", "Say: I like coffee.", "我喜欢咖啡", "我喜欢"),
 )
+
+
+def load_content_database() -> sqlite3.Connection | None:
+    """Load the repository's curated SQL package without requiring Node or an ORM."""
+    if not CONTENT_SQL_PATH.exists():
+        return None
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.executescript(CONTENT_SQL_PATH.read_text(encoding="utf-8"))
+        connection.row_factory = sqlite3.Row
+        return connection
+    except sqlite3.Error:
+        connection.close()
+        return None
+
+
+CONTENT_DATABASE = load_content_database()
+
+
+def content_exercises() -> tuple[tuple[str, str, str, str], ...]:
+    if CONTENT_DATABASE is None:
+        return EXERCISES
+    try:
+        rows = CONTENT_DATABASE.execute("SELECT exercise_id, concept_id, prompt, answer, accepted_answers FROM exercises ORDER BY concept_id, exercise_order").fetchall()
+    except sqlite3.Error:
+        return EXERCISES
+    result: list[tuple[str, str, str, str]] = []
+    for row in rows:
+        answer = row["answer"] or ""
+        try:
+            parsed = json.loads(answer)
+            answer = parsed.get("value", answer) if isinstance(parsed, dict) else answer
+        except json.JSONDecodeError:
+            answer = answer.strip('"{}')
+        accepted = row["accepted_answers"] or answer
+        try:
+            accepted_values = json.loads(accepted)
+            hint = " / ".join(str(value) for value in accepted_values) if isinstance(accepted_values, list) else str(accepted_values)
+        except json.JSONDecodeError:
+            hint = accepted.strip('[]"')
+        result.append((row["concept_id"], row["prompt"], answer, hint))
+    return tuple(result) or EXERCISES
 
 
 class Repository:
@@ -346,9 +390,10 @@ def render_practice(repository: Repository, learner_id: str) -> None:
     st.markdown("<div class='page-kicker'>GUIDED PRACTICE</div>", unsafe_allow_html=True)
     st.title("Practice Studio")
     st.caption("Short controlled practice prepares you for the final Freeform goal check.")
-    labels = [f"{cid} · {prompt}" for cid, prompt, _, _ in EXERCISES]
+    exercise_bank = content_exercises()
+    labels = [f"{cid} · {prompt}" for cid, prompt, _, _ in exercise_bank]
     selected = st.selectbox("Exercise", labels)
-    cid, prompt, expected, hint = EXERCISES[labels.index(selected)]
+    cid, prompt, expected, hint = exercise_bank[labels.index(selected)]
     st.markdown(f"<div class='concept-card'><div class='concept-number'>TARGET CONCEPT</div><div class='concept-title'>{CONCEPTS_BY_ID[cid].title}</div><div class='concept-en'>{prompt}</div></div>", unsafe_allow_html=True)
     answer = st.text_input("Your answer", key=f"exercise_{cid}")
     st.caption(f"Hint: {hint}")
@@ -389,6 +434,24 @@ def render_pinyin_chart() -> None:
     for index, ending in enumerate(finals):
         with grid[index % 7]:
             st.button(f"{initial}{ending}", key=f"chart_{initial}_{ending}")
+
+
+def render_teaching_cards() -> None:
+    st.markdown("<div class='page-kicker'>CURATED TEACHING CARDS</div>", unsafe_allow_html=True)
+    st.title("Teaching Cards")
+    if CONTENT_DATABASE is None:
+        st.warning("The curated SQL content package is unavailable; using the built-in fallback cards.")
+        return
+    concepts = CONTENT_DATABASE.execute("SELECT DISTINCT concept_id FROM teaching_cards ORDER BY concept_id").fetchall()
+    selected = st.selectbox("Concept", [row["concept_id"] for row in concepts])
+    cards = CONTENT_DATABASE.execute("SELECT * FROM teaching_cards WHERE concept_id=? ORDER BY card_order", (selected,)).fetchall()
+    for card in cards:
+        with st.container(border=True):
+            st.markdown(f"**{card['card_type'].replace('_', ' ').title()}**")
+            st.subheader(card["prompt_zh"] or card["meaning_en"] or "Teaching card")
+            if card["pinyin"]: st.code(card["pinyin"], language="text")
+            if card["explanation_en"]: st.write(card["explanation_en"])
+            if card["example_zh"]: st.info(f"{card['example_zh']} · {card['example_pinyin'] or ''} · {card['example_en'] or ''}")
 
 
 def render_dialogue(repository: Repository, learner_id: str) -> None:
@@ -485,11 +548,12 @@ def main() -> None:
     </style>""", unsafe_allow_html=True)
     repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
     with st.sidebar:
-        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Teaching Cards", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
     if page == "Today": render_today(repository, learner_id)
     elif page == "Learn": render_learn(repository, learner_id)
     elif page == "Practice": render_practice(repository, learner_id)
+    elif page == "Teaching Cards": render_teaching_cards()
     elif page == "Pinyin Lab": render_pinyin(repository, learner_id)
     elif page == "Pinyin Chart": render_pinyin_chart()
     elif page == "Freeform": render_dialogue(repository, learner_id)
