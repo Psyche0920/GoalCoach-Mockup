@@ -25,6 +25,7 @@ except ImportError:  # Optional until an AI key is configured.
 
 DB_PATH = Path(__file__).resolve().parent / "data" / "goalcoach_streamlit.sqlite"
 CONTENT_SQL_PATH = Path(__file__).resolve().parent / "data/database1/GoalCoach_HSK1_Learning_DB_Package/data/goalcoach_hsk1_learning_db_sqlite.sql"
+PINYIN_SOURCE_PATH = Path(__file__).resolve().parent / "src/data/pinyinUnitsData.ts"
 
 
 def ai_client():
@@ -229,6 +230,33 @@ PINYIN_CARDS = (
     ("三声变调", "nǐ hǎo → ní hǎo", "你好", "The first third tone commonly rises before another third tone."),
     ("轻声", "ma / ne / ba", "好吗？你呢？", "Keep the particle short and light."),
 )
+
+
+def load_pinyin_cards() -> tuple[dict[str, str | int], ...]:
+    """Parse the curated TypeScript Pinyin catalogue for the Python client."""
+    if not PINYIN_SOURCE_PATH.exists():
+        return tuple()
+    source = PINYIN_SOURCE_PATH.read_text(encoding="utf-8")
+    cards: list[dict[str, str | int]] = []
+    pattern = re.compile(r"\{\s*id:\s*'([^']+)'(?P<body>.*?)\n\s*\}", re.DOTALL)
+    for match in pattern.finditer(source):
+        body = match.group("body")
+        unit_match = re.search(r"unitNumber:\s*(\d+)", body)
+        pinyin_match = re.search(r"pinyin:\s*'([^']*)'", body)
+        hanzi_match = re.search(r"anchorHanzi:\s*'([^']*)'", body)
+        meaning_match = re.search(r"meaningEn:\s*'([^']*)'", body)
+        target_match = re.search(r"audioTarget:\s*'([^']*)'", body)
+        if not unit_match or not pinyin_match:
+            continue
+        cards.append({
+            "id": match.group(1), "unit": int(unit_match.group(1)), "pinyin": pinyin_match.group(1),
+            "hanzi": hanzi_match.group(1) if hanzi_match else "", "meaning": meaning_match.group(1) if meaning_match else "",
+            "target": target_match.group(1) if target_match else (hanzi_match.group(1) if hanzi_match else ""),
+        })
+    return tuple(cards)
+
+
+ALL_PINYIN_CARDS = load_pinyin_cards()
 
 EXERCISES = (
     ("hsk1_c01", "Translate: Hello!", "你好", "你好"),
@@ -562,6 +590,17 @@ def render_pinyin(repository: Repository, learner_id: str) -> None:
     tone_cols = st.columns(4)
     for column, (tone, contour, description) in zip(tone_cols, (("1", "55", "high and flat"), ("2", "35", "rising"), ("3", "214", "low/dipping"), ("4", "51", "falling"))):
         with column: st.metric(f"Tone {tone}", contour); st.caption(description)
+    catalogue = [card for card in ALL_PINYIN_CARDS if card["unit"] == index + 1]
+    if catalogue:
+        st.divider(); st.subheader(f"Unit {index + 1} teaching cards ({len(catalogue)})")
+        columns = st.columns(3)
+        for card_index, card in enumerate(catalogue):
+            with columns[card_index % 3]:
+                with st.container(border=True):
+                    st.markdown(f"**{card['pinyin']}**")
+                    st.caption(str(card["meaning"]))
+                    if card["hanzi"]: st.write(f"{card['hanzi']} · {card['target']}")
+                    if card["target"]: render_audio(str(card["target"]))
 
 
 def normalize(value: str) -> str:
