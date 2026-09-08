@@ -41,6 +41,13 @@ def generate_ai_response(instruction: str, fallback: str) -> str:
     if client is None:
         return fallback
 
+    try:
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=instruction)
+        text = getattr(response, "text", None)
+        return text.strip() if text else fallback
+    except (OSError, RuntimeError, ValueError):
+        return fallback
+
 
 def password_digest(password: str, salt: bytes | None = None) -> str:
     """Hash passwords with PBKDF2; plaintext credentials never enter SQLite."""
@@ -56,15 +63,6 @@ def verify_password(password: str, encoded: str) -> bool:
         return hmac.compare_digest(expected, digest_hex)
     except (ValueError, TypeError):
         return False
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=instruction,
-        )
-        text = getattr(response, "text", None)
-        return text.strip() if text else fallback
-    except (OSError, RuntimeError, ValueError):
-        return fallback
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -155,6 +153,19 @@ class PlanItem:
     unit_ids: tuple[str, ...]
     title: str
     minutes: int
+
+
+@dataclass(frozen=True, slots=True)
+class GradingResult:
+    task_achievement: float
+    grammar: float
+    target_concept: float
+    completeness: float
+    feedback: str
+
+    @property
+    def score(self) -> float:
+        return min(self.task_achievement, self.target_concept, self.grammar, self.completeness)
 
 
 def build_curriculum() -> tuple[Concept, ...]:
@@ -407,6 +418,25 @@ def grade(answer: str, target: str) -> tuple[float, str]:
     return .2, "Almost there. Try again with the available language."
 
 
+def structured_grade(answer: str, target: str, concept: str) -> GradingResult:
+    """Use a validated rubric response for language-heavy grading."""
+    deterministic_score, fallback = grade(answer, target)
+    prompt = (
+        "Grade a beginner Chinese answer. Return ONLY valid JSON with numeric fields "
+        "task_achievement, grammar, target_concept, completeness in [0,1], and string feedback. "
+        f"Concept: {concept}. Expected: {target}. Answer: {answer}"
+    )
+    raw = generate_ai_response(prompt, "")
+    if raw:
+        try:
+            payload = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+            values = {key: max(0.0, min(1.0, float(payload[key]))) for key in ("task_achievement", "grammar", "target_concept", "completeness")}
+            return GradingResult(**values, feedback=str(payload.get("feedback", fallback))[:500])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            pass
+    return GradingResult(deterministic_score, deterministic_score, deterministic_score, deterministic_score, fallback)
+
+
 def render_today(repository: Repository, learner_id: str) -> None:
     learner = repository.ensure(learner_id); items, anchor = make_plan(repository, learner_id); total = sum(item.minutes for item in items)
     progress = repository.progress(learner_id)
@@ -499,11 +529,14 @@ def render_practice(repository: Repository, learner_id: str) -> None:
     answer = st.text_input("Your answer", key=f"exercise_{cid}")
     st.caption(f"Hint: {hint}")
     if st.button("Submit answer", type="primary"):
-        score, feedback = grade(answer, expected)
+        grading = structured_grade(answer, expected, CONCEPTS_BY_ID[cid].title)
+        score, feedback = grading.score, grading.feedback
         unit = UNITS_BY_ID[f"unit_{cid}"]; item = PlanItem(f"practice_{cid}", "new", (cid,), (unit.id,), CONCEPTS_BY_ID[cid].title, 3)
         version = repository.record(learner_id, item, "attempt", score, 180, 1.0 if score >= .75 else .75)
         if score >= .75: st.success(f"{feedback} · State version {version}")
         else: st.warning(feedback)
+        with st.expander("Rubric detail"):
+            st.write({"Task achievement": grading.task_achievement, "Grammar": grading.grammar, "Target concept": grading.target_concept, "Completeness": grading.completeness})
 
 
 def render_profile(repository: Repository, learner_id: str) -> None:
