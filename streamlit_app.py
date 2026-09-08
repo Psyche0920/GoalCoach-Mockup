@@ -363,6 +363,24 @@ class Repository:
         self.db.execute("INSERT INTO coach_message (learner_id, role, message, created_at) VALUES (?,?,?,?)", (learner_id, role, message, datetime.utcnow().isoformat(timespec="seconds")))
         self.db.commit()
 
+    def analytics(self, learner_id: str) -> dict[str, object]:
+        row = self.db.execute("""SELECT COUNT(*) AS events,
+            COALESCE(SUM(active_seconds), 0) AS seconds,
+            COALESCE(AVG(quality), 0) AS quality
+            FROM learning_event WHERE learner_id=?""", (learner_id,)).fetchone()
+        daily = self.db.execute("""SELECT substr(created_at, 1, 10) AS day,
+            COUNT(*) AS events, ROUND(SUM(active_seconds) / 60.0, 1) AS minutes
+            FROM learning_event WHERE learner_id=?
+            GROUP BY day ORDER BY day DESC LIMIT 14""", (learner_id,)).fetchall()
+        errors = self.errors(learner_id)
+        return {
+            "events": int(row["events"]),
+            "minutes": round(float(row["seconds"]) / 60, 1),
+            "quality": round(float(row["quality"]), 3),
+            "daily": [{"Day": item["day"], "Events": item["events"], "Minutes": item["minutes"]} for item in reversed(daily)],
+            "errors": [{"Concept": CONCEPTS_BY_ID.get(item["concept_id"], Concept("", item["concept_id"], "", "", 0, "")).title, "Error": item["error_code"], "Occurrences": item["occurrences"]} for item in errors[:10]],
+        }
+
 
 def retention(row: sqlite3.Row | None) -> float:
     if not row or not row["last_reviewed"]: return 0.0
@@ -750,7 +768,24 @@ def main() -> None:
     elif page == "Retention": render_retention(repository, learner_id)
     elif page == "Profile": render_profile(repository, learner_id)
     else:
-        rows = repository.progress(learner_id); coverage = sum(float(row["learned"]) > 0 for row in rows.values()) / len(CONCEPTS); readiness = sum(float(row["mastery"]) * retention(row) for row in rows.values()) / len(CONCEPTS); st.title("Progress"); first, second = st.columns(2); first.metric("Course coverage", f"{coverage:.0%}"); second.metric("Current readiness", f"{readiness:.0%}"); st.caption("Readiness can decay with time; course coverage does not.")
+        rows = repository.progress(learner_id); coverage = sum(float(row["learned"]) > 0 for row in rows.values()) / len(CONCEPTS); readiness = sum(float(row["mastery"]) * retention(row) for row in rows.values()) / len(CONCEPTS); stats = repository.analytics(learner_id)
+        st.title("Progress & Analytics")
+        st.caption("Readiness can decay with time; course coverage does not.")
+        first, second, third, fourth = st.columns(4)
+        first.metric("Course coverage", f"{coverage:.0%}")
+        second.metric("Current readiness", f"{readiness:.0%}")
+        third.metric("Learning minutes", f"{stats['minutes']:.1f}")
+        fourth.metric("Average quality", f"{stats['quality']:.0%}")
+        st.subheader("Activity trend")
+        if stats["daily"]:
+            st.line_chart(stats["daily"], x="Day", y=["Events", "Minutes"])
+        else:
+            st.info("Complete a lesson to start building your activity trend.")
+        st.subheader("Recurring errors")
+        if stats["errors"]:
+            st.dataframe(stats["errors"], hide_index=True, use_container_width=True)
+        else:
+            st.success("No recurring errors recorded yet.")
 
 
 if __name__ == "__main__": main()
