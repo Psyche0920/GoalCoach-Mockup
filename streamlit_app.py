@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import json
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -12,8 +13,37 @@ from typing import Sequence
 
 import streamlit as st
 
+try:
+    from google import genai
+except ImportError:  # Optional until an AI key is configured.
+    genai = None
+
 DB_PATH = Path(__file__).resolve().parent / "data" / "goalcoach_streamlit.sqlite"
 CONTENT_SQL_PATH = Path(__file__).resolve().parent / "data/database1/GoalCoach_HSK1_Learning_DB_Package/data/goalcoach_hsk1_learning_db_sqlite.sql"
+
+
+def ai_client():
+    """Return a Gemini client when configured, otherwise use deterministic fallbacks."""
+    api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+    if not api_key or genai is None:
+        return None
+    return genai.Client(api_key=api_key)
+
+
+def generate_ai_response(instruction: str, fallback: str) -> str:
+    """Call Gemini for language-heavy work without making it a hard dependency."""
+    client = ai_client()
+    if client is None:
+        return fallback
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=instruction,
+        )
+        text = getattr(response, "text", None)
+        return text.strip() if text else fallback
+    except (OSError, RuntimeError, ValueError):
+        return fallback
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,16 +489,20 @@ def render_dialogue(repository: Repository, learner_id: str) -> None:
     st.title("Guided Freeform")
     st.caption("A two-turn scenario checks whether you can use today's language in context.")
     st.info("Context: You meet a new classmate. They say: 你好！")
-    st.write("Choose a natural reply, then ask one question back.")
-    choices = ["你好！我叫 Anna。你呢？", "你好！我是学生。你是学生吗？", "谢谢，再见。"]
-    answer = st.radio("Your reply", choices)
+    st.write("Write a natural reply, then ask one question back.")
+    answer = st.text_input("Your reply", placeholder="你好！我叫 Anna。你呢？")
     if st.button("Submit goal check", type="primary"):
-        passed = answer != choices[-1]
         unit = UNITS_BY_ID["unit_hsk1_c24"]
         item = PlanItem("freeform_dialogue", "free_play", ("hsk1_c24",), (unit.id,), "Two-turn introduction", 4)
+        fallback = "Goal achieved. You completed two connected turns." if answer and "你" in answer else "Almost there. Keep the conversation connected and ask a question back."
+        feedback = generate_ai_response(
+            "Grade this beginner Chinese reply to '你好！'. Return one short sentence of encouraging feedback in English. "
+            f"The learner wrote: {answer}",
+            fallback,
+        )
+        passed = bool(answer.strip()) and ("你" in answer or "我" in answer)
         version = repository.record(learner_id, item, "output", 1.0 if passed else .3, 240, 1.0 if passed else .75)
-        if passed: st.success(f"Goal achieved. You completed two connected turns. State version: {version}")
-        else: st.warning("Almost there. Keep the conversation connected and ask a question back.")
+        (st.success if passed else st.warning)(f"{feedback} State version: {version}")
 
 
 def render_coach() -> None:
@@ -483,7 +517,12 @@ def render_coach() -> None:
     if prompt:
         st.session_state["coach_messages"].append(("user", prompt))
         lower = prompt.lower()
-        response = "很好！先说短句就可以。试试：我叫……。然后问：你呢？" if "name" in lower or "名字" in prompt else "Almost there. 中文先说人，再说动作：我想喝茶。再试一次。"
+        fallback = "很好！先说短句就可以。试试：我叫……。然后问：你呢？" if "name" in lower or "名字" in prompt else "Almost there. 中文先说人，再说动作：我想喝茶。再试一次。"
+        response = generate_ai_response(
+            "You are a warm beginner Chinese coach. Answer in no more than two short sentences. "
+            "Use simple Chinese with an English explanation when useful. Learner message: " + prompt,
+            fallback,
+        )
         st.session_state["coach_messages"].append(("assistant", response)); st.rerun()
 
 
