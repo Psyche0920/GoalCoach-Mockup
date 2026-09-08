@@ -158,21 +158,33 @@ def grade(answer: str, target: str) -> tuple[float, str]:
 
 def render_today(repository: Repository, learner_id: str) -> None:
     learner = repository.ensure(learner_id); items, anchor = make_plan(repository, learner_id); total = sum(item.minutes for item in items)
-    st.title(f"你好，{learner['name']}。"); st.subheader(f"今天只需 {total or learner['minutes']} 分钟"); st.write(anchor.outcome if anchor else "今天先完成到期复习，保持已学能力稳定。")
+    progress = repository.progress(learner_id)
+    coverage = sum(float(row["learned"]) > 0 for row in progress.values()) / len(CONCEPTS)
+    readiness = sum(float(row["mastery"]) * retention(row) for row in progress.values()) / len(CONCEPTS)
+    st.markdown(f"<div class='hero'><div class='hero-kicker'>GOALCOACH · HSK 1 FOUNDATIONS</div><div class='hero-title'>你好，{learner['name']}。</div><div class='hero-subtitle'>今天只需 <strong>{total or learner['minutes']} 分钟</strong>，完成一个可以真正说出来的小目标。</div><div class='hero-outcome'>{anchor.outcome if anchor else '今天先完成到期复习，保持已学能力稳定。'}</div></div>", unsafe_allow_html=True)
+    first, second, third = st.columns(3)
+    first.metric("Today's plan", f"{total or learner['minutes']} min")
+    second.metric("Course coverage", f"{coverage:.0%}")
+    third.metric("Current readiness", f"{readiness:.0%}")
+    st.markdown("<div class='section-label'>TODAY'S PATH</div>", unsafe_allow_html=True)
     if st.button("开始今天的第一步", type="primary") and items: st.session_state["selected"] = items[0].id; st.session_state["page"] = "Learn"; st.rerun()
     for item in items:
         with st.container(border=True):
-            st.markdown(f"**{item.kind.replace('_', ' ').title()} · {item.minutes} min**"); st.write(item.title)
+            icon = {"review": "↻", "new": "✦", "remedial": "◎", "free_play": "◈"}[item.kind]
+            st.markdown(f"<div class='task-row'><div class='task-icon'>{icon}</div><div><div class='task-kind'>{item.kind.replace('_', ' ').upper()} · {item.minutes} MIN</div><div class='task-title'>{item.title}</div><div class='task-caption'>{'Retrieve and strengthen an existing skill.' if item.kind == 'review' else 'Build one complete, usable learning unit.' if item.kind == 'new' else 'A short targeted correction before output.' if item.kind == 'remedial' else 'Final goal check: use today’s language in context.'}</div></div></div>", unsafe_allow_html=True)
             if st.button("Start", key=f"start_{item.id}"): st.session_state["selected"] = item.id; st.session_state["page"] = "Learn"; st.rerun()
 
 
 def render_curriculum(repository: Repository, learner_id: str) -> None:
-    st.title("Curriculum Roadmap"); progress = repository.progress(learner_id)
+    st.markdown("<div class='page-kicker'>LONG-TERM LEARNING MAP</div>", unsafe_allow_html=True); st.title("Curriculum Roadmap"); st.caption("A stable sequence of pronunciation, grammar and communication. Daily Plan selects from this map; it does not create a second curriculum."); progress = repository.progress(learner_id)
     for module in ("Pronunciation", "Grammar", "Communication"):
-        st.subheader(module)
-        for concept in (item for item in CONCEPTS if item.module == module):
+        concepts = [item for item in CONCEPTS if item.module == module]; learned_count = sum(bool(progress.get(c.id) and progress[c.id]["learned"] > 0) for c in concepts); mastered_count = sum(bool(progress.get(c.id) and progress_status(progress[c.id]) == "mastered") for c in concepts)
+        st.markdown(f"<div class='module-header'><span>{module}</span><small>{learned_count}/{len(concepts)} learned · {mastered_count} mastered</small></div>", unsafe_allow_html=True)
+        columns = st.columns(3)
+        for index, concept in enumerate(concepts):
             row = progress.get(concept.id); learned = int(row["learned"]) if row else 0; mastered = f"{int(row['mastery'] * 100)}%" if row and progress_status(row) == "mastered" else "—"
-            st.markdown(f"**{concept.title}** · Learning {learned}% · Mastered {mastered}  \n{concept.english}")
+            with columns[index % 3]:
+                st.markdown(f"<div class='concept-card'><div class='concept-number'>{concept.sequence:02d}</div><div class='concept-title'>{concept.title}</div><div class='concept-en'>{concept.english}</div><div class='bar'><span style='width:{learned}%'></span></div><div class='concept-meta'><span>Learning {learned}%</span><span>Mastered {mastered}</span></div></div>", unsafe_allow_html=True)
 
 
 def render_learn(repository: Repository, learner_id: str) -> None:
@@ -188,7 +200,19 @@ def render_learn(repository: Repository, learner_id: str) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide"); repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
+    st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide")
+    st.markdown("""<style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+    :root { --ink:#171717; --muted:#71717a; --green:#10b981; --soft:#f0fdf4; --line:#e4e4e7; }
+    html,body,[class*='css'] { font-family:'DM Sans','Noto Sans SC',sans-serif; }
+    .stApp { background:linear-gradient(145deg,#fafafa 0%,#f5fdf9 100%); color:var(--ink); }
+    [data-testid='stSidebar'] { background:#171717; } [data-testid='stSidebar'] * { color:#fafafa !important; }
+    .hero { background:linear-gradient(135deg,#111827,#064e3b); color:white; border-radius:26px; padding:34px 38px; margin-bottom:22px; box-shadow:0 12px 30px #064e3b22; }
+    .hero-kicker,.page-kicker,.section-label { font-size:10px; font-weight:800; letter-spacing:.14em; color:#6ee7b7; }
+    .hero-title { font-size:34px; font-weight:900; margin:10px 0 4px; } .hero-subtitle { font-size:17px; color:#d1fae5; } .hero-outcome { margin-top:22px; background:#ffffff18; border:1px solid #ffffff2a; border-radius:15px; padding:14px 16px; font-size:15px; }
+    .section-label { color:#047857; margin:26px 0 10px; } .task-row { display:flex; gap:15px; align-items:center; min-height:58px; } .task-icon { width:42px;height:42px;border-radius:14px;background:#ecfdf5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800; } .task-kind { color:#059669;font-size:10px;font-weight:800;letter-spacing:.1em; } .task-title { font-size:17px;font-weight:800;margin:3px 0; } .task-caption,.concept-en { color:#71717a;font-size:12px; } .module-header { margin-top:26px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--line);padding:0 2px 10px;font-size:19px;font-weight:800; } .module-header small { color:#71717a;font-size:11px;font-weight:500; } .concept-card { background:white;border:1px solid var(--line);border-radius:18px;padding:16px;margin:8px 0;min-height:122px;box-shadow:0 3px 10px #00000008; } .concept-number { color:#a1a1aa;font-size:10px;font-weight:800;letter-spacing:.1em; } .concept-title { font-size:15px;font-weight:800;margin:7px 0 2px; } .bar { height:5px;background:#f4f4f5;border-radius:9px;margin:14px 0 8px;overflow:hidden; } .bar span { display:block;height:100%;background:#10b981;border-radius:9px; } .concept-meta { color:#059669;font-size:10px;font-weight:700;display:flex;justify-content:space-between; } .stButton>button { border-radius:12px;font-weight:700;border:1px solid #d4d4d8; } .stButton>button[kind='primary'] { background:#10b981;color:#052e16;border:0; }
+    </style>""", unsafe_allow_html=True)
+    repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
     with st.sidebar:
         st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Curriculum", "Progress"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
