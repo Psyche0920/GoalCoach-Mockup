@@ -16,7 +16,7 @@ import { deriveStatus, projectProgress } from './src/domain/progress.ts';
 
 const HSK1_CONCEPTS = SYSTEM_CURRICULUM_CONCEPTS;
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const app = express();
 
 app.use(cors());
