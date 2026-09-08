@@ -390,6 +390,30 @@ class Repository:
         messages = [{"role": role, "message": message} for role, message in self.coach_history(learner_id)]
         return json.dumps({"schema_version": 1, "exported_at": datetime.utcnow().isoformat(timespec="seconds"), "learner": learner, "progress": progress, "events": events, "errors": errors, "coach_messages": messages}, ensure_ascii=False, indent=2)
 
+    def restore_learner(self, learner_id: str, raw: str) -> tuple[bool, str]:
+        """Restore portable state atomically while keeping account credentials intact."""
+        try:
+            payload = json.loads(raw)
+            if payload.get("schema_version") != 1 or payload.get("learner", {}).get("learner_id") != learner_id:
+                return False, "备份版本或学习者身份不匹配。"
+            learner = payload["learner"]
+            progress = payload.get("progress", []); events = payload.get("events", [])
+            errors = payload.get("errors", []); messages = payload.get("coach_messages", [])
+            if not all(isinstance(value, list) for value in (progress, events, errors, messages)):
+                return False, "备份数据结构无效。"
+            with self.db:
+                self.ensure(learner_id)
+                self.db.execute("UPDATE learner SET name=?, goal=?, minutes=?, interests=?, state_version=? WHERE learner_id=?", (str(learner["name"]), str(learner["goal"]), int(learner["minutes"]), str(learner["interests"]), int(learner.get("state_version", 1)), learner_id))
+                for table in ("concept_progress", "learning_event", "error_profile", "coach_message"):
+                    self.db.execute(f"DELETE FROM {table} WHERE learner_id=?", (learner_id,))
+                self.db.executemany("INSERT INTO concept_progress VALUES (?,?,?,?,?,?,?,?,?,?)", [tuple(item[key] for key in ("learner_id", "concept_id", "learned", "mastery", "retention", "reviews", "evidence_days", "quality", "last_reviewed", "next_review")) for item in progress])
+                self.db.executemany("INSERT INTO learning_event VALUES (?,?,?,?,?,?,?,?,?,?)", [tuple(item[key] for key in ("event_id", "learner_id", "plan_item_id", "concept_ids", "event_type", "active_seconds", "estimated_minutes", "engagement", "quality", "created_at")) for item in events])
+                self.db.executemany("INSERT INTO error_profile VALUES (?,?,?,?,?)", [tuple(item[key] for key in ("learner_id", "concept_id", "error_code", "occurrences", "last_seen")) for item in errors])
+                self.db.executemany("INSERT INTO coach_message (learner_id, role, message, created_at) VALUES (?,?,?,?)", [(learner_id, item["role"], item["message"], datetime.utcnow().isoformat(timespec="seconds")) for item in messages])
+            return True, "备份恢复成功。"
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, sqlite3.Error) as error:
+            return False, f"备份恢复失败：{error}"
+
 
 def retention(row: sqlite3.Row | None) -> float:
     if not row or not row["last_reviewed"]: return 0.0
@@ -581,6 +605,10 @@ def render_profile(repository: Repository, learner_id: str) -> None:
     st.subheader("Data portability")
     st.caption("Download a complete JSON backup of your profile, progress, events, errors and Coach history.")
     st.download_button("Download learner backup", repository.export_learner(learner_id), file_name=f"goalcoach-{learner_id}.json", mime="application/json")
+    uploaded = st.file_uploader("Restore learner backup", type=["json"])
+    if uploaded is not None and st.button("Restore backup", type="secondary"):
+        success, message = repository.restore_learner(learner_id, uploaded.getvalue().decode("utf-8"))
+        (st.success if success else st.error)(message)
 
 
 def render_pinyin_chart() -> None:
