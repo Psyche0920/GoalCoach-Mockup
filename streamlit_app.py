@@ -164,6 +164,7 @@ class Repository:
         CREATE TABLE IF NOT EXISTS learner (learner_id TEXT PRIMARY KEY, name TEXT NOT NULL, goal TEXT NOT NULL, minutes INTEGER NOT NULL, interests TEXT NOT NULL, state_version INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS concept_progress (learner_id TEXT NOT NULL, concept_id TEXT NOT NULL, learned REAL NOT NULL DEFAULT 0, mastery REAL NOT NULL DEFAULT 0, retention REAL NOT NULL DEFAULT 0, reviews INTEGER NOT NULL DEFAULT 0, evidence_days INTEGER NOT NULL DEFAULT 0, quality REAL NOT NULL DEFAULT 0, last_reviewed TEXT, next_review TEXT, PRIMARY KEY (learner_id, concept_id));
         CREATE TABLE IF NOT EXISTS learning_event (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, plan_item_id TEXT NOT NULL, concept_ids TEXT NOT NULL, event_type TEXT NOT NULL, active_seconds INTEGER NOT NULL, estimated_minutes INTEGER NOT NULL, engagement REAL NOT NULL, quality REAL NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS plan_completion (learner_id TEXT NOT NULL, plan_item_id TEXT NOT NULL, completed_at TEXT NOT NULL, quality REAL NOT NULL, PRIMARY KEY (learner_id, plan_item_id));
         CREATE TABLE IF NOT EXISTS learning_unit (unit_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS daily_goal_blueprint (blueprint_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         """)
@@ -192,7 +193,12 @@ class Repository:
                 next_review = (datetime.utcnow() + timedelta(days=max(1, reviews * 2))).isoformat(timespec="seconds")
                 self.db.execute("""INSERT INTO concept_progress VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(learner_id,concept_id) DO UPDATE SET learned=excluded.learned,mastery=excluded.mastery,retention=excluded.retention,reviews=excluded.reviews,evidence_days=excluded.evidence_days,quality=excluded.quality,last_reviewed=excluded.last_reviewed,next_review=excluded.next_review""", (learner_id, cid, min(100, learned + (20 if event_type == "output" else 40)), min(1, max(mastery, .35 * quality) + (.15 if successful else 0)), quality, reviews, days, ((average * (count - 1)) + quality) / count, now[:10], next_review))
             self.db.execute("UPDATE learner SET state_version=state_version+1 WHERE learner_id=?", (learner_id,))
+            if quality >= .75:
+                self.db.execute("INSERT OR REPLACE INTO plan_completion VALUES (?,?,?,?)", (learner_id, item.id, now, quality))
         return int(self.ensure(learner_id)["state_version"])
+
+    def completed_items(self, learner_id: str) -> set[str]:
+        return {row["plan_item_id"] for row in self.db.execute("SELECT plan_item_id FROM plan_completion WHERE learner_id=?", (learner_id,)).fetchall()}
 
 
 def retention(row: sqlite3.Row | None) -> float:
@@ -209,7 +215,8 @@ def progress_status(row: sqlite3.Row | None) -> str:
 
 def make_plan(repository: Repository, learner_id: str) -> tuple[tuple[PlanItem, ...], GoalBlueprint | None]:
     learner = repository.ensure(learner_id); progress = repository.progress(learner_id); budget = int(learner["minutes"]); today = date.today().isoformat(); items: list[PlanItem] = []
-    due = [row for row in progress.values() if row["next_review"] and row["next_review"][:10] <= today]
+    completed = repository.completed_items(learner_id)
+    due = [row for row in progress.values() if row["next_review"] and row["next_review"][:10] <= today and f"review_{row['concept_id']}" not in completed]
     for row in sorted(due, key=lambda value: value["next_review"] or ""):
         if sum(item.minutes for item in items) + 3 > budget: break
         items.append(PlanItem(f"review_{row['concept_id']}", "review", (row["concept_id"],), (), "Spaced retrieval review", 3))
@@ -223,9 +230,12 @@ def make_plan(repository: Repository, learner_id: str) -> tuple[tuple[PlanItem, 
     if not anchor: return tuple(items), None
     for uid in anchor.unit_ids:
         unit = UNITS_BY_ID[uid]
+        item_id = f"new_{uid}"
+        if item_id in completed: continue
         if sum(item.minutes for item in items) + unit.minutes > budget: break
-        items.append(PlanItem(f"new_{uid}", "new", unit.concept_ids, (uid,), unit.title, unit.minutes))
-    if sum(item.minutes for item in items) + 4 <= budget: items.append(PlanItem(f"free_{anchor.id}", "free_play", anchor.concept_ids, anchor.unit_ids, "Complete the target conversation", 4))
+        items.append(PlanItem(item_id, "new", unit.concept_ids, (uid,), unit.title, unit.minutes))
+    free_id = f"free_{anchor.id}"
+    if sum(item.minutes for item in items) + 4 <= budget and free_id not in completed: items.append(PlanItem(free_id, "free_play", anchor.concept_ids, anchor.unit_ids, "Complete the target conversation", 4))
     return tuple(items), anchor
 
 
@@ -414,6 +424,36 @@ def render_retention(repository: Repository, learner_id: str) -> None:
     else: st.success("No urgent reviews due.")
 
 
+def render_knowledge_tree(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>SKILL GRAPH</div>", unsafe_allow_html=True)
+    st.title("Knowledge Tree")
+    progress = repository.progress(learner_id)
+    for module, color in (("Pronunciation", "#38bdf8"), ("Grammar", "#34d399"), ("Communication", "#fbbf24")):
+        concepts = [concept for concept in CONCEPTS if concept.module == module]
+        st.markdown(f"<div class='module-header'><span style='color:{color}'>{module}</span><small>Prerequisites unlock the next node</small></div>", unsafe_allow_html=True)
+        for concept in concepts:
+            row = progress.get(concept.id)
+            learned = int(row["learned"]) if row else 0
+            locked = bool(concept.prerequisite and (not progress.get(concept.prerequisite) or progress[concept.prerequisite]["learned"] < 100))
+            state = "Locked" if locked else progress_status(row)
+            marker = "🔒" if locked else "🏆" if state == "mastered" else "✅" if learned == 100 else "◦"
+            st.markdown(f"`{marker}` **{concept.title}** · {state} · Learning {learned}%")
+
+
+def render_goal_presets(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>GOAL DESIGN</div>", unsafe_allow_html=True)
+    st.title("Choose your learning skin")
+    st.caption("Your interest changes examples and scenes; it never changes curriculum order or prerequisites.")
+    presets = {"General": ("daily_life", "Build everyday HSK1 confidence."), "Travel": ("travel_directions", "Handle simple directions and travel scenes."), "Dining": ("dining_food", "Order food and drinks with confidence."), "Work and study": ("work_study", "Introduce yourself in a study or work context.")}
+    columns = st.columns(2)
+    for index, (title, (theme, outcome)) in enumerate(presets.items()):
+        with columns[index % 2]:
+            with st.container(border=True):
+                st.subheader(title); st.write(outcome)
+                if st.button("Use this theme", key=f"preset_{theme}"):
+                    learner = repository.ensure(learner_id); repository.save_profile(learner_id, learner["name"], learner["minutes"], [theme]); st.success("Theme saved. Curriculum sequence is unchanged.")
+
+
 def main() -> None:
     st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide")
     st.markdown("""<style>
@@ -429,7 +469,7 @@ def main() -> None:
     </style>""", unsafe_allow_html=True)
     repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
     with st.sidebar:
-        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
     if page == "Today": render_today(repository, learner_id)
     elif page == "Learn": render_learn(repository, learner_id)
@@ -439,6 +479,8 @@ def main() -> None:
     elif page == "Freeform": render_dialogue(repository, learner_id)
     elif page == "Coach": render_coach()
     elif page == "Curriculum": render_curriculum(repository, learner_id)
+    elif page == "Knowledge Tree": render_knowledge_tree(repository, learner_id)
+    elif page == "Goal Presets": render_goal_presets(repository, learner_id)
     elif page == "Retention": render_retention(repository, learner_id)
     elif page == "Profile": render_profile(repository, learner_id)
     else:
