@@ -310,6 +310,28 @@ def content_exercises() -> tuple[tuple[str, str, str, str], ...]:
     return tuple(result) or EXERCISES
 
 
+def content_exercise_rows() -> tuple[sqlite3.Row, ...]:
+    """Return the complete curated exercise records, preserving their authored type and options."""
+    if CONTENT_DATABASE is None:
+        return tuple()
+
+
+def authored_answer(raw: str | None) -> str:
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return str(parsed.get("value", ""))
+        return str(parsed)
+    except json.JSONDecodeError:
+        return raw.strip('"')
+    try:
+        return tuple(CONTENT_DATABASE.execute("SELECT * FROM exercises ORDER BY concept_id, exercise_order").fetchall())
+    except sqlite3.Error:
+        return tuple()
+
+
 class Repository:
     def __init__(self, path: Path = DB_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -611,15 +633,26 @@ def render_practice(repository: Repository, learner_id: str) -> None:
     st.markdown("<div class='page-kicker'>GUIDED PRACTICE</div>", unsafe_allow_html=True)
     st.title("Practice Studio")
     st.caption("Short controlled practice prepares you for the final Freeform goal check.")
+    exercise_rows = content_exercise_rows()
     exercise_bank = content_exercises()
-    labels = [f"{cid} · {prompt}" for cid, prompt, _, _ in exercise_bank]
+    labels = [f"{row['concept_id']} · {row['prompt']}" for row in exercise_rows] if exercise_rows else [f"{cid} · {prompt}" for cid, prompt, _, _ in exercise_bank]
     selected = st.selectbox("Exercise", labels)
-    cid, prompt, expected, hint = exercise_bank[labels.index(selected)]
+    selected_index = labels.index(selected)
+    if exercise_rows:
+        row = exercise_rows[selected_index]
+        cid, prompt, expected, hint = row["concept_id"], row["prompt"], authored_answer(row["answer"]), row["explanation"] or ""
+        exercise_type = row["exercise_type"]
+        try: options = json.loads(row["options"]) if row["options"] else []
+        except json.JSONDecodeError: options = []
+    else:
+        cid, prompt, expected, hint = exercise_bank[selected_index]
+        exercise_type, options = "writing", []
     st.markdown(f"<div class='concept-card'><div class='concept-number'>TARGET CONCEPT</div><div class='concept-title'>{CONCEPTS_BY_ID[cid].title}</div><div class='concept-en'>{prompt}</div></div>", unsafe_allow_html=True)
-    answer = st.text_input("Your answer", key=f"exercise_{cid}")
+    st.caption(f"Exercise type: {exercise_type.replace('_', ' ').title()}")
+    answer = st.radio("Choose an answer", options, key=f"choice_{cid}_{selected_index}") if options else st.text_input("Your answer", key=f"exercise_{cid}_{selected_index}")
     st.caption(f"Hint: {hint}")
     if st.button("Submit answer", type="primary"):
-        grading = structured_grade(answer, expected, CONCEPTS_BY_ID[cid].title)
+        grading = structured_grade(answer, expected, CONCEPTS_BY_ID.get(cid, Concept(cid, cid, cid, "Communication", 0, "daily_life")).title)
         score, feedback = grading.score, grading.feedback
         unit = UNITS_BY_ID[f"unit_{cid}"]; item = PlanItem(f"practice_{cid}", "new", (cid,), (unit.id,), CONCEPTS_BY_ID[cid].title, 3)
         version = repository.record(learner_id, item, "attempt", score, 180, 1.0 if score >= .75 else .75)
