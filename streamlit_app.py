@@ -749,9 +749,10 @@ def main() -> None:
     requested_learner = str(st.query_params.get("learner", learner_id)).strip()
     learner_id = re.sub(r"[^a-zA-Z0-9_-]", "", requested_learner)[:48] or learner_id
     learner = repository.ensure(learner_id)
+    navigation = ["Today", "Learn", "Practice", "Teaching Cards", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"]
+    page = st.radio("Navigate", navigation, horizontal=True, label_visibility="collapsed")
     with st.sidebar:
         st.title("🎯 GoalCoach"); st.caption(f"Learner: {learner_id}")
-        page = st.radio("Navigate", ["Today", "Learn", "Practice", "Teaching Cards", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"])
         name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         st.caption("Shareable learner profile")
         st.code(f"?learner={learner_id}", language="text")
