@@ -5,12 +5,9 @@ import {
   CheckCircle2, 
   Clock, 
   Sparkles, 
-  Layers, 
-  Volume2, 
-  ArrowRight, 
-  RotateCcw,
-  Search,
-  Filter
+  Activity, 
+  Award,
+  BookOpen
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -25,24 +22,12 @@ import {
 } from 'recharts';
 import { LearnerState, CurriculumConcept } from '../types.ts';
 import { HSK1_TEACHING_CARDS_EXPANDED } from '../data/cards.ts';
-import { audioFeedback } from '../utils/audioFeedback.ts';
-
-// Concise theme keyword mappings
-const THEME_KEYWORDS: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  core_grammar: { label: 'Core Grammar', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
-  greetings_etiquette: { label: 'Greetings', bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-200' },
-  identity_family: { label: 'People & Identity', bg: 'bg-sky-50', text: 'text-sky-800', border: 'border-sky-200' },
-  dining_food: { label: 'Dining & Food', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
-  shopping_numbers: { label: 'Shopping & Numbers', bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200' },
-  time_dates: { label: 'Time & Dates', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
-  locations_travel: { label: 'Travel & Transit', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' },
-  daily_activities: { label: 'Daily Life', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
-};
+import { KnowledgeTree } from './KnowledgeTree.tsx';
 
 interface RetentionVisualizerProps {
   learnerState: LearnerState | null;
   concepts: CurriculumConcept[];
-  onReviewConcept: (conceptId: string) => void;
+  onReviewConcept: (conceptId: string, isPinyin?: boolean) => void;
 }
 
 export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
@@ -50,28 +35,24 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
   concepts,
   onReviewConcept,
 }) => {
-  const [filterType, setFilterType] = useState<'all' | 'learning' | 'mastered'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Timeframe state: default to 'all' (From Day 1 onwards)
+  const [timeframe, setTimeframe] = useState<'all' | '30d' | '7d'>('all');
 
   // 1. 计算每个知识点绑定的教学卡片数量
   const cardCountByConcept = useMemo(() => {
     const map: Record<string, number> = {};
     for (const card of HSK1_TEACHING_CARDS_EXPANDED) {
-      map[card.conceptId] = (map[card.conceptId] || 0) + 1;
-    }
-    // 针对每个知识点保底至少有 1 张卡片
-    for (const c of concepts) {
-      if (!map[c.conceptId]) map[c.conceptId] = 1;
+      if (card.conceptId) {
+        map[card.conceptId] = (map[card.conceptId] || 0) + 1;
+      }
     }
     return map;
-  }, [concepts]);
+  }, []);
 
-  // 全套课程总卡片数
-  const totalCards = useMemo(() => {
-    return Object.values(cardCountByConcept).reduce((acc, count) => acc + count, 0);
-  }, [cardCountByConcept]);
+  // 总卡片数
+  const totalCards = HSK1_TEACHING_CARDS_EXPANDED.length;
 
-  // 2. 根据用户学习状态计算：已完成卡片数、已学知识点数、已精通知识点数
+  // 2. 核心进度统计 (Goal Progress Metrics - Strictly preserved)
   const { completedCards, learnedCount, masteredCount } = useMemo(() => {
     let completed = 0;
     let learned = 0;
@@ -106,8 +87,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
   // 剩余未完成卡片数
   const remainingCards = Math.max(0, totalCards - completedCards);
 
-  // 过去 7 天的学习强度与预计还需天数
-  // 日常强度基准：用户每天设定的目标学习时间（默认 15 分钟），通常对应完成 3~5 张卡片
+  // 过去每日学习强度与预计还需天数
   const targetDailyMinutes = learnerState?.goal?.dailyAvailableMinutes || 15;
   const estimatedDailyCardVelocity = Math.max(2, Math.round(targetDailyMinutes / 3.5));
 
@@ -116,85 +96,109 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
     ? 0 
     : Math.max(1, Math.ceil(remainingCards / estimatedDailyCardVelocity));
 
-  // 3. 构建过去 7 天每天的学习时长与卡片完成曲线数据 (100% 真实统计，无任何虚构 Mock 数据)
-  const { dailyTrendData, totalMinutes7Days, totalCards7Days, hasActiveHistory } = useMemo(() => {
+  // 3. 构建从 Day 1 开始完整的历史学习曲线与趋势数据 (From Day 1 to present)
+  const { 
+    trendData, 
+    totalMinutesSinceDay1, 
+    totalCardsSinceDay1, 
+    activeDaysCount, 
+    day1DateString,
+    hasActiveHistory 
+  } = useMemo(() => {
     const today = new Date();
+    const sessions = learnerState?.sessions || [];
+
+    // Find Day 1 timestamp
+    let day1Timestamp = today.getTime() - 13 * 86400000; // Default at least 14 days baseline
+    if (sessions.length > 0) {
+      const earliestSession = sessions.reduce((min, s) => {
+        const t = new Date(s.startedAt).getTime();
+        return t < min ? t : min;
+      }, new Date(sessions[0].startedAt).getTime());
+      day1Timestamp = earliestSession;
+    }
+
+    const day1Date = new Date(day1Timestamp);
+    // Align to start of day
+    const day1Start = new Date(day1Date.getFullYear(), day1Date.getMonth(), day1Date.getDate()).getTime();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+
+    // Calculate total days from Day 1 to today
+    const totalDaysFromDay1 = Math.max(7, Math.ceil((todayStart - day1Start) / 86400000) + 1);
+
+    // Filter day count based on chosen timeframe
+    let daysToInclude = totalDaysFromDay1;
+    if (timeframe === '7d') {
+      daysToInclude = 7;
+    } else if (timeframe === '30d') {
+      daysToInclude = Math.min(30, totalDaysFromDay1);
+    }
+
     const data = [];
     const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-    // Aggregate session logs
-    const sessions = learnerState?.sessions || [];
+    let cumulativeCardsCounter = 0;
     let sumMinutes = 0;
     let sumCards = 0;
+    let activeDays = 0;
 
-    for (let i = 6; i >= 0; i--) {
+    for (let i = daysToInclude - 1; i >= 0; i--) {
       const targetDate = new Date(today);
       targetDate.setDate(today.getDate() - i);
       const dateKey = `${targetDate.getMonth() + 1}/${targetDate.getDate()}`;
       const weekday = weekdayNames[targetDate.getDay()];
       const isToday = i === 0;
 
+      const dayIndexFromDay1 = totalDaysFromDay1 - i;
+
       // Exact day timestamps
-      const dayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
-      const dayEnd = dayStart + 86400000;
+      const curDayStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+      const curDayEnd = curDayStart + 86400000;
 
       let actualMinutes = 0;
       let actualCards = 0;
 
       for (const s of sessions) {
         const sTime = new Date(s.startedAt).getTime();
-        if (sTime >= dayStart && sTime < dayEnd) {
+        if (sTime >= curDayStart && sTime < curDayEnd) {
           const duration = (new Date(s.endedAt).getTime() - sTime) / 60000;
           actualMinutes += Math.max(1, Math.round(duration));
           actualCards += (s.conceptsCovered?.length || 1) * 2;
         }
       }
 
+      if (actualMinutes > 0 || actualCards > 0) {
+        activeDays++;
+      }
+
       sumMinutes += actualMinutes;
       sumCards += actualCards;
+      cumulativeCardsCounter += actualCards;
 
       data.push({
         date: isToday ? `${dateKey} (Today)` : `${dateKey} ${weekday}`,
         shortDate: dateKey,
+        dayNumber: `Day ${dayIndexFromDay1}`,
         minutes: actualMinutes,
         cards: actualCards,
+        cumulativeCards: cumulativeCardsCounter,
       });
     }
 
     return {
-      dailyTrendData: data,
-      totalMinutes7Days: sumMinutes,
-      totalCards7Days: sumCards,
+      trendData: data,
+      totalMinutesSinceDay1: sumMinutes,
+      totalCardsSinceDay1: sumCards,
+      activeDaysCount: activeDays,
+      day1DateString: `${day1Date.getFullYear()}-${day1Date.getMonth() + 1}-${day1Date.getDate()}`,
       hasActiveHistory: sumMinutes > 0 || sumCards > 0,
     };
-  }, [learnerState]);
-
-  // 4. Filter concepts
-  const filteredConcepts = useMemo(() => {
-    return concepts.filter((c) => {
-      const mastery = learnerState?.mastery?.[c.conceptId];
-      const isLearned = mastery && mastery.evidenceCount > 0;
-      const isMastered = isLearned && mastery.masteryScore >= 0.8;
-
-      if (filterType === 'learning' && (!isLearned || isMastered)) return false;
-      if (filterType === 'mastered' && !isMastered) return false;
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const themeInfo = THEME_KEYWORDS[c.theme];
-        const matchTitle = c.titleZh.toLowerCase().includes(q) || c.titleEn.toLowerCase().includes(q);
-        const matchTheme = themeInfo?.label.toLowerCase().includes(q);
-        const matchTag = c.tags?.some((t) => t.toLowerCase().includes(q));
-        return matchTitle || matchTheme || matchTag;
-      }
-
-      return true;
-    });
-  }, [concepts, learnerState, filterType, searchQuery]);
+  }, [learnerState, timeframe]);
 
   return (
     <div className="space-y-8 select-none pb-12">
-      {/* Overview Section */}
+      {/* =========================================================================
+          1. GOAL PROGRESS OVERVIEW (Strictly Unchanged as Requested)
+          ========================================================================= */}
       <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           {/* Goal progress core metrics */}
@@ -208,7 +212,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
             </h1>
             <p className="text-sm font-semibold text-zinc-600 max-w-xl leading-relaxed">
               {hasActiveHistory ? (
-                <>Based on your last 7 days ({totalMinutes7Days} min studied, {totalCards7Days} cards completed), </>
+                <>Based on your learning history ({totalMinutesSinceDay1} min studied, {totalCardsSinceDay1} cards completed), </>
               ) : (
                 <>At your daily target of {targetDailyMinutes} min/day (~{estimatedDailyCardVelocity} cards/day), </>
               )}
@@ -256,30 +260,92 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
         </div>
       </section>
 
-      {/* Daily Study Trends Section */}
+      {/* =========================================================================
+          2. STUDY CURVE & TRENDS (From Day 1 to Present)
+          ========================================================================= */}
       <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-emerald-600" />
               <h2 className="text-lg sm:text-xl font-black text-zinc-950">
-                7-Day Activity Trends
+                Study Curve & Trends
               </h2>
             </div>
             <p className="text-xs font-bold text-zinc-500">
-              Daily study time (min) vs. completed cards
+              Tracking your learning velocity from Day 1 ({day1DateString}) to present
             </p>
           </div>
 
-          {/* Legend tags */}
-          <div className="flex items-center gap-4 text-xs font-black">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-md bg-emerald-500" />
-              <span className="text-zinc-700">Study Time (min)</span>
+          {/* Timeframe selector: Day 1 (All) / 30 Days / 7 Days */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex bg-zinc-100 p-1 rounded-2xl border border-zinc-200 text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setTimeframe('all')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  timeframe === 'all'
+                    ? 'bg-zinc-950 text-white shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-950'
+                }`}
+              >
+                Since Day 1 (All)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeframe('30d')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  timeframe === '30d'
+                    ? 'bg-zinc-950 text-white shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-950'
+                }`}
+              >
+                Past 30 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimeframe('7d')}
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  timeframe === '7d'
+                    ? 'bg-zinc-950 text-white shadow-xs'
+                    : 'text-zinc-600 hover:text-zinc-950'
+                }`}
+              >
+                Past 7 Days
+              </button>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-1.5 rounded-full bg-sky-500" />
-              <span className="text-zinc-700">Cards Completed</span>
+          </div>
+        </div>
+
+        {/* Aggregate Milestone Badges */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-black shadow-xs">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold text-zinc-500 block">Total Study Time</span>
+              <span className="text-base font-black text-emerald-950">{totalMinutesSinceDay1} Minutes</span>
+            </div>
+          </div>
+
+          <div className="bg-sky-50/60 border border-sky-200 rounded-2xl p-3.5 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center font-black shadow-xs">
+              <Activity className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold text-zinc-500 block">Cards Completed</span>
+              <span className="text-base font-black text-sky-950">{totalCardsSinceDay1} Cards</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-3.5 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-xs">
+              <Award className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold text-zinc-500 block">Active Study Days</span>
+              <span className="text-base font-black text-amber-950">{activeDaysCount} Days Active</span>
             </div>
           </div>
         </div>
@@ -288,16 +354,16 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
           <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 flex items-start sm:items-center gap-3 text-xs text-amber-900 font-bold">
             <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
             <span>
-              No study sessions recorded yet in the past 7 days. Complete practice sessions to see your progress here.
+              Your daily sessions will dynamically populate this study curve from Day 1 onward.
             </span>
           </div>
         )}
 
-        {/* Recharts trend chart */}
+        {/* Recharts curve & trends chart */}
         <div className="w-full h-72 pt-2">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
-              data={dailyTrendData}
+              data={trendData}
               margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
             >
               <defs>
@@ -311,7 +377,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                 dataKey="shortDate" 
                 tickLine={false} 
                 axisLine={{ stroke: '#d4d4d8' }}
-                tick={{ fontSize: 12, fill: '#71717a', fontWeight: 'bold' }}
+                tick={{ fontSize: 11, fill: '#71717a', fontWeight: 'bold' }}
               />
               {/* Left Y Axis: Study Time */}
               <YAxis 
@@ -319,38 +385,41 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 11, fill: '#10b981', fontWeight: 'bold' }}
-                unit="m"
+                domain={[0, 'auto']}
               />
               {/* Right Y Axis: Completed Cards */}
               <YAxis 
-                yAxisId="right" 
+                yAxisId="right"
                 orientation="right"
                 tickLine={false}
                 axisLine={false}
                 tick={{ fontSize: 11, fill: '#0284c7', fontWeight: 'bold' }}
-                unit=" cards"
+                domain={[0, 'auto']}
               />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{
-                  backgroundColor: '#ffffff',
+                  backgroundColor: '#09090b',
                   borderRadius: '16px',
-                  border: '2px solid #18181b',
-                  boxShadow: '0 4px 0 #18181b',
-                  padding: '10px 14px',
+                  border: '1px solid #27272a',
+                  color: '#ffffff',
                   fontWeight: 'bold',
                   fontSize: '12px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
                 }}
-                formatter={(value: any, name: any) => {
+                labelStyle={{ color: '#a1a1aa', marginBottom: '4px' }}
+                formatter={(value: any, name: string) => {
                   if (name === 'minutes') return [`${value} min`, 'Study Time'];
-                  if (name === 'cards') return [`${value} cards`, 'Cards Completed'];
+                  if (name === 'cards') return [`${value} cards`, 'Daily Cards'];
                   return [value, name];
                 }}
-                labelFormatter={(label, payload) => {
-                  const item = payload && payload[0] ? payload[0].payload : null;
-                  return item ? item.date : label;
-                }}
               />
-              {/* 面积图：时长 */}
+              <Legend 
+                verticalAlign="top" 
+                align="right" 
+                iconType="circle"
+                wrapperStyle={{ paddingBottom: '12px', fontSize: '11px', fontWeight: 'bold' }}
+              />
+              {/* 面积图：每日时长 */}
               <Area
                 yAxisId="left"
                 type="monotone"
@@ -361,7 +430,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
                 fillOpacity={1}
                 fill="url(#colorMinutes)"
               />
-              {/* 折线图：卡片数 */}
+              {/* 折线图：每日卡片数 */}
               <Line
                 yAxisId="right"
                 type="monotone"
@@ -378,167 +447,13 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
       </section>
 
       {/* =========================================================================
-          第三部分：已学习知识点总结 (Learned Concepts Summary)
-          需求：只需要总结知识点以及学习进度，通过绿色渐变色表示完成度，
-          主题标注关键词，简洁美观，不需要把所有细碎东西全列上去。
+          3. KNOWLEDGE TREE (Concept Mastery as Illustrated Book Tree from attached pic)
           ========================================================================= */}
-      {/* Concept Mastery Summary Section */}
-      <section className="bg-white rounded-3xl border-2 border-zinc-900 p-6 sm:p-8 shadow-[0_5px_0_#18181b] space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-zinc-950">
-              Concept Mastery Overview
-            </h2>
-            <p className="text-xs font-bold text-zinc-500 mt-0.5">
-              Visual completion and retention score by concept (0% – 100%)
-            </p>
-          </div>
-
-          {/* Filter tabs */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex bg-zinc-100 p-1 rounded-2xl border border-zinc-200 text-xs font-black">
-              <button
-                onClick={() => setFilterType('all')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  filterType === 'all'
-                    ? 'bg-white text-zinc-950 shadow-xs'
-                    : 'text-zinc-500 hover:text-zinc-900'
-                }`}
-              >
-                All ({concepts.length})
-              </button>
-              <button
-                onClick={() => setFilterType('learning')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  filterType === 'learning'
-                    ? 'bg-white text-emerald-800 shadow-xs'
-                    : 'text-zinc-500 hover:text-zinc-900'
-                }`}
-              >
-                In Progress ({learnedCount - masteredCount > 0 ? learnedCount - masteredCount : 0})
-              </button>
-              <button
-                onClick={() => setFilterType('mastered')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                  filterType === 'mastered'
-                    ? 'bg-white text-emerald-800 shadow-xs'
-                    : 'text-zinc-500 hover:text-zinc-900'
-                }`}
-              >
-                Mastered ({masteredCount})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search concepts or topics (e.g. grammar, greeting, number)..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-zinc-50 border-2 border-zinc-200 focus:border-zinc-900 text-xs font-bold text-zinc-900 outline-none transition-colors"
-          />
-        </div>
-
-        {/* Concept Card Grid */}
-        {filteredConcepts.length === 0 ? (
-          <div className="text-center py-12 text-zinc-400 space-y-2">
-            <Layers className="w-8 h-8 mx-auto stroke-[1.5] text-zinc-300" />
-            <p className="text-xs font-bold">No matching concepts found</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {filteredConcepts.map((concept) => {
-              const mastery = learnerState?.mastery?.[concept.conceptId];
-              const score = mastery ? mastery.masteryScore : 0;
-              const percent = Math.min(100, Math.round(score * 100));
-              const themeInfo = THEME_KEYWORDS[concept.theme] || {
-                label: 'General',
-                bg: 'bg-zinc-100',
-                text: 'text-zinc-700',
-                border: 'border-zinc-200',
-              };
-
-              const isMastered = percent >= 80;
-              const hasStarted = percent > 0;
-
-              return (
-                <div
-                  key={concept.conceptId}
-                  className="bg-zinc-50/70 hover:bg-white rounded-2xl border-2 border-zinc-200 hover:border-zinc-900 p-4 transition-all space-y-3 shadow-xs hover:shadow-[0_3px_0_#18181b]"
-                >
-                  {/* Topic badge and audio */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${themeInfo.bg} ${themeInfo.text} ${themeInfo.border}`}>
-                      {themeInfo.label}
-                    </span>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => audioFeedback.speakChinese(concept.titleZh)}
-                        className="p-1.5 rounded-lg text-zinc-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                        title="Play pronunciation"
-                      >
-                        <Volume2 className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="text-[11px] font-bold text-zinc-400">
-                        {cardCountByConcept[concept.conceptId] || 1} cards
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Concept title */}
-                  <div className="space-y-0.5">
-                    <h3 className="font-chinese text-base font-black text-zinc-900">
-                      {concept.titleZh}
-                    </h3>
-                    <p className="text-xs font-medium text-zinc-500 truncate">
-                      {concept.titleEn}
-                    </p>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-zinc-400 text-[11px]">Status</span>
-                      <span className={`font-black ${
-                        isMastered ? 'text-emerald-700' : hasStarted ? 'text-emerald-600' : 'text-zinc-400'
-                      }`}>
-                        {isMastered ? 'Mastered' : hasStarted ? `Learned (${percent}%)` : 'Not Started'}
-                      </span>
-                    </div>
-
-                    <div className="w-full bg-zinc-200/80 rounded-full h-2.5 overflow-hidden p-0.5 border border-zinc-200">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          hasStarted
-                            ? 'bg-gradient-to-r from-emerald-400 via-emerald-500 to-green-600 shadow-xs'
-                            : 'bg-transparent'
-                        }`}
-                        style={{ width: `${Math.max(hasStarted ? 6 : 0, percent)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Action button */}
-                  <div className="pt-1 flex items-center justify-end">
-                    <button
-                      onClick={() => onReviewConcept(concept.conceptId)}
-                      className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-800 hover:text-emerald-950 px-3 py-1.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-200 border border-emerald-300/80 transition-all cursor-pointer"
-                    >
-                      <span>{hasStarted ? 'Practice' : 'Start'}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <KnowledgeTree
+        learnerState={learnerState}
+        concepts={concepts}
+        onSelectConcept={(conceptId, isPinyin) => onReviewConcept(conceptId, isPinyin)}
+      />
     </div>
   );
 };

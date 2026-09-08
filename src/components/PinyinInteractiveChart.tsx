@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Volume2, Sparkles, BookOpen, Mic, X, CheckCircle2, ChevronRight, Layers, HelpCircle } from 'lucide-react';
 import { CHART_INITIALS, CHART_FINALS, PINYIN_GRID_CELLS, PinyinChartCellData } from '../data/pinyinChartMatrix';
 import { PinyinPhonemeCard } from '../data/pinyinUnitsData';
+import { playMandarinAudio } from '../utils/pinyinAudio';
 
 interface PinyinInteractiveChartProps {
   onSelectCardForPractice?: (card: PinyinPhonemeCard, mode: 'knowledge' | 'practice') => void;
@@ -15,16 +16,15 @@ export const PinyinInteractiveChart: React.FC<PinyinInteractiveChartProps> = ({
   const [activeCell, setActiveCell] = useState<PinyinChartCellData | null>(null);
   const [activeToneInModal, setActiveToneInModal] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentlyPlayingKey, setCurrentlyPlayingKey] = useState<string | null>(null);
 
-  // Audio player with fallback Web Speech API
-  const playPinyinAudio = (text: string, rate: number = 0.85) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.rate = rate;
-      window.speechSynthesis.speak(utterance);
-    }
+  // High quality Mandarin Audio Player with TTS endpoint + SpeechSynthesis fallback
+  const playPinyinAudio = (text: string, playKey?: string, rate: number = 0.88) => {
+    if (playKey) setCurrentlyPlayingKey(playKey);
+    playMandarinAudio(text, {
+      rate,
+      onEnd: () => setCurrentlyPlayingKey(null),
+    });
   };
 
   const handleCellClick = (cell: PinyinChartCellData) => {
@@ -32,7 +32,8 @@ export const PinyinInteractiveChart: React.FC<PinyinInteractiveChartProps> = ({
     const toneToPlay = selectedTone === 'all' ? (cell.validTones[0] || 1) : selectedTone;
     setActiveToneInModal(toneToPlay);
     const audioText = cell.audioChars[toneToPlay] || cell.pinyinWithTones[toneToPlay] || cell.syllable;
-    playPinyinAudio(audioText);
+    const playKey = `${cell.initial}_${cell.final}`;
+    playPinyinAudio(audioText, playKey);
   };
 
   const handleInitialClick = (initial: string) => {
@@ -280,30 +281,26 @@ export const PinyinInteractiveChart: React.FC<PinyinInteractiveChartProps> = ({
                         displayPinyin = cellData.pinyinWithTones[selectedTone];
                       }
 
+                      const isCellPlaying = currentlyPlayingKey === `${initial}_${final}`;
+
                       return (
                         <td
                           key={final}
                           onClick={() => handleCellClick(cellData)}
                           onMouseEnter={() => setHoveredCell({ initial, final })}
                           onMouseLeave={() => setHoveredCell(null)}
-                          className={`p-1.5 border-b border-r border-slate-200 text-center cursor-pointer select-none transition-all duration-150 ${
-                            isActive
+                          className={`p-2 border-b border-r border-slate-200 text-center cursor-pointer select-none transition-all duration-150 relative ${
+                            isActive || isCellPlaying
                               ? 'bg-indigo-600 text-white font-bold shadow-inner ring-2 ring-indigo-400'
                               : isHovered
                               ? 'bg-indigo-200/70 text-indigo-950 font-bold scale-105 z-10 shadow-sm'
                               : 'hover:bg-indigo-100 text-slate-800 font-medium'
                           }`}
                         >
-                          <div className="flex flex-col items-center justify-center">
-                            <span className="text-xs tracking-tight">{displayPinyin}</span>
-                            {cellData.anchorWord && (
-                              <span
-                                className={`text-[9px] ${
-                                  isActive ? 'text-indigo-100' : 'text-slate-400'
-                                }`}
-                              >
-                                {cellData.anchorWord.hanzi}
-                              </span>
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="text-xs font-mono font-semibold tracking-tight">{displayPinyin}</span>
+                            {isCellPlaying && (
+                              <Volume2 className="w-3 h-3 text-amber-300 animate-pulse" />
                             )}
                           </div>
                         </td>
@@ -360,7 +357,7 @@ export const PinyinInteractiveChart: React.FC<PinyinInteractiveChartProps> = ({
                     type="button"
                     onClick={() => {
                       const sound = activeCell.audioChars[activeToneInModal] || activeCell.pinyinWithTones[activeToneInModal];
-                      playPinyinAudio(sound, 0.6);
+                      playPinyinAudio(sound, undefined, 0.6);
                     }}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
                   >

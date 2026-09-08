@@ -291,72 +291,124 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
   }
 
   // 3. Find next unstudied or low-mastery concepts
-  // Strict Pedagogical Priority Mandate:
-  // MUST (Core Grammar) + Priority Themes (matching user targetDomain & interests) > General Knowledge > Other Themes
+  // Strict Pedagogical Rule: 70% Pinyin, 30% Vocabulary/Grammar for new cards in early phase.
+  // Both Pinyin and Vocabulary must be scheduled if dedicated time allows >= 2 items!
   const userInterests: CurriculumTheme[] = state.goal?.interests || [];
   const targetDomain = state.goal?.targetDomain || 'general';
+  const availableDailyMinutes = state.goal?.dailyAvailableMinutes || 15;
 
   const getPriorityWeight = (concept: typeof HSK1_CONCEPTS[0]): number => {
     let weight = 0;
     const isPriorityTheme = userInterests.includes(concept.theme) || (targetDomain !== 'general' && (concept.tags.includes(targetDomain) || concept.theme === `${targetDomain}_directions` || concept.theme === `${targetDomain}_food` || concept.theme === `${targetDomain}_study`));
 
     if (concept.category === 'pinyin') {
-      // Pinyin phonetics foundation has top priority for unmastered concepts
       weight += 1500;
     } else if (concept.isCoreGrammar || concept.category === 'grammar') {
-      // Must-have foundation
       weight += 1000;
     }
     if (isPriorityTheme) {
-      // User's specific scenario interest (e.g. Travel, Work, Dining)
       weight += 800;
     } else if (concept.category === 'general_knowledge') {
-      // Useful everyday tools (dates, numbers, clock time, money, measure words)
       weight += 400;
     } else {
-      // Other non-priority scenarios
       weight += 100;
     }
     return weight;
   };
 
-  const candidateConcepts = [...HSK1_CONCEPTS].sort((a, b) => {
+  // Separate unmastered candidates into Pinyin vs Vocabulary/Grammar
+  const unmasteredPinyin = HSK1_CONCEPTS.filter((c) => {
+    if (c.category !== 'pinyin') return false;
+    const m = state.mastery[c.conceptId];
+    return !m || m.masteryScore < 0.7;
+  }).sort((a, b) => a.sequenceNo - b.sequenceNo);
+
+  const unmasteredVocabGrammar = HSK1_CONCEPTS.filter((c) => {
+    if (c.category === 'pinyin') return false;
+    const m = state.mastery[c.conceptId];
+    return !m || m.masteryScore < 0.7;
+  }).sort((a, b) => {
     const weightA = getPriorityWeight(a);
     const weightB = getPriorityWeight(b);
-
-    if (weightA !== weightB) {
-      return weightB - weightA; // Higher weight first
-    }
-
-    // Within same priority tier, maintain pedagogical sequence
-    return a.sequenceNo - b.sequenceNo;
+    return weightA !== weightB ? weightB - weightA : a.sequenceNo - b.sequenceNo;
   });
 
-  for (const concept of candidateConcepts) {
-    if (newItems.length >= 4) break;
-    const mastery = state.mastery[concept.conceptId];
-    if (!mastery || mastery.masteryScore < 0.7) {
-      if (!newItems.some((it) => it.conceptId === concept.conceptId)) {
-        const isInterestMatch = userInterests.includes(concept.theme) || (targetDomain !== 'general' && concept.tags.includes(targetDomain));
+  // Calculate remaining slot capacity for new items (target 3-4 items total per routine)
+  const maxTotalItems = Math.max(2, Math.min(4, Math.floor(availableDailyMinutes / 5)));
+  const remainingSlots = Math.max(0, maxTotalItems - newItems.length);
+
+  if (remainingSlots > 0) {
+    if (remainingSlots === 1) {
+      // If only 1 slot can fit, pick unmastered Pinyin first, then Vocab
+      const pick = unmasteredPinyin[0] || unmasteredVocabGrammar[0];
+      if (pick && !newItems.some((it) => it.conceptId === pick.conceptId)) {
         newItems.push({
-          id: `item-${Date.now()}-${concept.conceptId}`,
-          conceptId: concept.conceptId,
-          kind: mastery ? 'remedial' : 'new',
-          objective: `${isInterestMatch ? '🎯 ' : ''}${mastery ? 'Strengthen' : 'Learn'} ${concept.titleEn} (${concept.communicativeGoal})`,
-          estimatedMinutes: concept.estimatedMinutes,
+          id: `item-${Date.now()}-${pick.conceptId}`,
+          conceptId: pick.conceptId,
+          kind: 'new',
+          objective: `Learn ${pick.titleEn} (${pick.communicativeGoal})`,
+          estimatedMinutes: pick.estimatedMinutes,
           completed: false,
         });
+      }
+    } else {
+      // 2 or more slots available: Strict 70% Pinyin, 30% Vocabulary rule
+      // Guarantee both Pinyin and Vocabulary are present if both pools have candidates!
+      let targetPinyinCount = Math.round(remainingSlots * 0.7);
+      let targetVocabCount = remainingSlots - targetPinyinCount;
+
+      if (unmasteredPinyin.length > 0 && targetPinyinCount === 0) targetPinyinCount = 1;
+      if (unmasteredVocabGrammar.length > 0 && targetVocabCount === 0) targetVocabCount = 1;
+
+      // Adjust if pinyin has fewer available
+      if (unmasteredPinyin.length < targetPinyinCount) {
+        targetVocabCount += (targetPinyinCount - unmasteredPinyin.length);
+        targetPinyinCount = unmasteredPinyin.length;
+      }
+
+      // Add Pinyin items
+      let addedPinyin = 0;
+      for (const p of unmasteredPinyin) {
+        if (addedPinyin >= targetPinyinCount) break;
+        if (!newItems.some((it) => it.conceptId === p.conceptId)) {
+          newItems.push({
+            id: `item-${Date.now()}-${p.conceptId}`,
+            conceptId: p.conceptId,
+            kind: 'new',
+            objective: `Pinyin Foundation: ${p.titleEn}`,
+            estimatedMinutes: p.estimatedMinutes,
+            completed: false,
+          });
+          addedPinyin++;
+        }
+      }
+
+      // Add Vocabulary/Grammar items
+      let addedVocab = 0;
+      for (const v of unmasteredVocabGrammar) {
+        if (newItems.length >= maxTotalItems) break;
+        if (!newItems.some((it) => it.conceptId === v.conceptId)) {
+          newItems.push({
+            id: `item-${Date.now()}-${v.conceptId}`,
+            conceptId: v.conceptId,
+            kind: 'new',
+            objective: `Vocabulary & Grammar: ${v.titleEn}`,
+            estimatedMinutes: v.estimatedMinutes,
+            completed: false,
+          });
+          addedVocab++;
+        }
       }
     }
   }
 
-  // If still empty, add next concepts
+  // Fallback if still empty
   if (newItems.length === 0) {
     newItems.push({
       id: `item-${Date.now()}-c01`,
       conceptId: 'hsk1_c01',
       kind: 'review',
-      objective: 'Practice greetings and fundamentals',
+      objective: 'Practice greetings and core fundamentals',
       estimatedMinutes: 5,
       completed: false,
     });
@@ -441,11 +493,24 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
     }
   }
 
-  // Mark item completed in activePlan if applicable
+  // Mark item completed in activePlan if applicable, or add spontaneous curriculum learning
   if (state.activePlan) {
     const item = state.activePlan.items.find((i) => i.conceptId === conceptId);
-    if (item && gradingResult.passedGates) {
-      item.completed = true;
+    if (item) {
+      if (gradingResult.passedGates) {
+        item.completed = true;
+      }
+    } else if (gradingResult.passedGates) {
+      // User spontaneously completed exercises for an extra curriculum concept
+      const conceptObj = HSK1_CONCEPTS.find((c) => c.conceptId === conceptId);
+      state.activePlan.items.push({
+        id: `item-spontaneous-${Date.now()}-${conceptId}`,
+        conceptId,
+        kind: 'new',
+        objective: `Extra Study: ${conceptObj?.titleEn || conceptId}`,
+        estimatedMinutes: conceptObj?.estimatedMinutes || 5,
+        completed: true,
+      });
     }
   }
 
@@ -513,11 +578,21 @@ app.post('/api/v1/learners/:learner_id/complete-concept', (req: Request, res: Re
     nextReviewAt: new Date(Date.now() + 2 * 86400 * 1000).toISOString(),
   };
 
-  // Mark in active plan if present
+  // Mark in active plan if present, or dynamically append as completed spontaneous learning
   if (state.activePlan) {
     const item = state.activePlan.items.find((i) => i.conceptId === conceptId);
     if (item) {
       item.completed = true;
+    } else {
+      const conceptObj = HSK1_CONCEPTS.find((c) => c.conceptId === conceptId);
+      state.activePlan.items.push({
+        id: `item-spontaneous-${Date.now()}-${conceptId}`,
+        conceptId,
+        kind: 'new',
+        objective: `Extra Study: ${conceptObj?.titleEn || conceptId}`,
+        estimatedMinutes: conceptObj?.estimatedMinutes || 5,
+        completed: true,
+      });
     }
   }
 
@@ -636,8 +711,9 @@ app.post('/api/v1/chat', async (req: Request, res: Response) => {
   const userMessage = messages?.[messages.length - 1]?.content || '';
 
   try {
-    if (process.env.GEMINI_API_KEY) {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOALCOACH_LLM_API_KEY;
+    if (apiKey) {
+      const ai = new GoogleGenAI({ apiKey });
       const systemInstruction = `你叫宝宝 (Coach BaoBao)，是一位有30年对外汉语教学经验的“国民中文私教”。
 你最核心的特质：【说真正的人话，绝不打官腔，绝不用冷冰冰的AI套话和机器人腔调】！
 你就像学生身边最懂他、最风趣、最温暖的中文搭子老朋友。

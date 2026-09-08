@@ -13,8 +13,8 @@ export function computeOverallProgress(state: LearnerState, at: string | Date = 
   const items = Object.values(state.mastery);
   if (items.length === 0) return 0.0;
 
-  const totalWeight = items.reduce((acc, item) => acc + (item.weight || 1.0), 0);
-  if (totalWeight <= 0) return 0.0;
+  // Full HSK 1 target scope: 15 core curriculum concepts + 5 pinyin foundation units = 20 total target units
+  const FULL_HSK1_BENCHMARK_WEIGHT = 20.0;
 
   const weightedSum = items.reduce((acc, item) => {
     const currentRet = calculateRetention(
@@ -26,7 +26,7 @@ export function computeOverallProgress(state: LearnerState, at: string | Date = 
     return acc + (item.weight || 1.0) * item.masteryScore * currentRet;
   }, 0);
 
-  return Math.max(0.0, Math.min(1.0, weightedSum / totalWeight));
+  return Math.max(0.0, Math.min(1.0, weightedSum / FULL_HSK1_BENCHMARK_WEIGHT));
 }
 
 /**
