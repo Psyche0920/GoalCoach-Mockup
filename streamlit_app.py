@@ -590,6 +590,12 @@ def render_curriculum(repository: Repository, learner_id: str) -> None:
             row = progress.get(concept.id); learned = int(row["learned"]) if row else 0; mastered = f"{int(row['mastery'] * 100)}%" if row and progress_status(row) == "mastered" else "—"
             with columns[index % 3]:
                 st.markdown(f"<div class='concept-card'><div class='concept-number'>{concept.sequence:02d}</div><div class='concept-title'>{concept.title}</div><div class='concept-en'>{concept.english}</div><div class='bar'><span style='width:{learned}%'></span></div><div class='concept-meta'><span>Learning {learned}%</span><span>Mastered {mastered}</span></div></div>", unsafe_allow_html=True)
+                with st.expander("Unit details", expanded=False):
+                    unit = UNITS_BY_ID[f"unit_{concept.id}"]
+                    st.caption(f"Prerequisite: {concept.prerequisite or 'None'} · {unit.minutes} minutes")
+                    for step in UNIT_STEPS[unit.id]:
+                        st.markdown(f"**{step.step_type.replace('_', ' ').title()}** · {step.instruction}")
+                    st.caption("Vocabulary slots: 我 · 你 · 是 · 叫 · 喜欢 · 吗 · 呢")
     authored = content_curriculum_rows()
     if authored:
         with st.expander(f"Authored curriculum catalog ({len(authored)} concepts)"):
@@ -756,7 +762,13 @@ def render_dialogue(repository: Repository, learner_id: str) -> None:
     st.markdown("<div class='page-kicker'>FREEFORM GOAL CHECK</div>", unsafe_allow_html=True)
     st.title("Guided Freeform")
     st.caption("A two-turn scenario checks whether you can use today's language in context.")
+    plan_items, anchor = make_plan(repository, learner_id)
+    pending_core = [item for item in plan_items if item.kind in {"new", "review", "remedial"}]
     st.info("Context: You meet a new classmate. They say: 你好！")
+    if pending_core:
+        st.warning("Complete the current Review/New/Remedial steps first. Freeform is the final Daily Goal gate.")
+        st.caption("Pending: " + " · ".join(item.title for item in pending_core[:4]))
+        return
     st.write("Write a natural reply, then ask one question back.")
     answer = st.text_input("Your reply", placeholder="你好！我叫 Anna。你呢？")
     if st.button("Submit goal check", type="primary"):
