@@ -165,6 +165,7 @@ class Repository:
         CREATE TABLE IF NOT EXISTS concept_progress (learner_id TEXT NOT NULL, concept_id TEXT NOT NULL, learned REAL NOT NULL DEFAULT 0, mastery REAL NOT NULL DEFAULT 0, retention REAL NOT NULL DEFAULT 0, reviews INTEGER NOT NULL DEFAULT 0, evidence_days INTEGER NOT NULL DEFAULT 0, quality REAL NOT NULL DEFAULT 0, last_reviewed TEXT, next_review TEXT, PRIMARY KEY (learner_id, concept_id));
         CREATE TABLE IF NOT EXISTS learning_event (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, plan_item_id TEXT NOT NULL, concept_ids TEXT NOT NULL, event_type TEXT NOT NULL, active_seconds INTEGER NOT NULL, estimated_minutes INTEGER NOT NULL, engagement REAL NOT NULL, quality REAL NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS plan_completion (learner_id TEXT NOT NULL, plan_item_id TEXT NOT NULL, completed_at TEXT NOT NULL, quality REAL NOT NULL, PRIMARY KEY (learner_id, plan_item_id));
+        CREATE TABLE IF NOT EXISTS error_profile (learner_id TEXT NOT NULL, concept_id TEXT NOT NULL, error_code TEXT NOT NULL, occurrences INTEGER NOT NULL DEFAULT 0, last_seen TEXT NOT NULL, PRIMARY KEY (learner_id, concept_id, error_code));
         CREATE TABLE IF NOT EXISTS learning_unit (unit_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS daily_goal_blueprint (blueprint_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         """)
@@ -195,10 +196,17 @@ class Repository:
             self.db.execute("UPDATE learner SET state_version=state_version+1 WHERE learner_id=?", (learner_id,))
             if quality >= .75:
                 self.db.execute("INSERT OR REPLACE INTO plan_completion VALUES (?,?,?,?)", (learner_id, item.id, now, quality))
+            else:
+                for concept_id in item.concept_ids:
+                    self.db.execute("""INSERT INTO error_profile VALUES (?,?,?,?,?)
+                    ON CONFLICT(learner_id,concept_id,error_code) DO UPDATE SET occurrences=occurrences+1,last_seen=excluded.last_seen""", (learner_id, concept_id, "target_gate_failed", 1, now[:10]))
         return int(self.ensure(learner_id)["state_version"])
 
     def completed_items(self, learner_id: str) -> set[str]:
         return {row["plan_item_id"] for row in self.db.execute("SELECT plan_item_id FROM plan_completion WHERE learner_id=?", (learner_id,)).fetchall()}
+
+    def errors(self, learner_id: str) -> list[sqlite3.Row]:
+        return self.db.execute("SELECT * FROM error_profile WHERE learner_id=? ORDER BY occurrences DESC, last_seen ASC", (learner_id,)).fetchall()
 
 
 def retention(row: sqlite3.Row | None) -> float:
@@ -216,6 +224,7 @@ def progress_status(row: sqlite3.Row | None) -> str:
 def make_plan(repository: Repository, learner_id: str) -> tuple[tuple[PlanItem, ...], GoalBlueprint | None]:
     learner = repository.ensure(learner_id); progress = repository.progress(learner_id); budget = int(learner["minutes"]); today = date.today().isoformat(); items: list[PlanItem] = []
     completed = repository.completed_items(learner_id)
+    errors = repository.errors(learner_id)
     due = [row for row in progress.values() if row["next_review"] and row["next_review"][:10] <= today and f"review_{row['concept_id']}" not in completed]
     for row in sorted(due, key=lambda value: value["next_review"] or ""):
         if sum(item.minutes for item in items) + 3 > budget: break
@@ -228,6 +237,13 @@ def make_plan(repository: Repository, learner_id: str) -> tuple[tuple[PlanItem, 
         if uncovered: candidates.append((uncovered + int(blueprint.theme in interests), blueprint))
     anchor = max(candidates, key=lambda value: (value[0], value[1].id), default=(0, None))[1]
     if not anchor: return tuple(items), None
+    remedial_budget = min(max(0, budget - sum(item.minutes for item in items)), max(2, int(budget * .25)))
+    for error in errors:
+        if error["concept_id"] not in anchor.concept_ids or remedial_budget < 2: continue
+        remedial_id = f"remedial_{error['concept_id']}"
+        if remedial_id in completed: continue
+        items.append(PlanItem(remedial_id, "remedial", (error["concept_id"],), (), f"Correct recurring error · {error['error_code']}", 2))
+        remedial_budget -= 2
     for uid in anchor.unit_ids:
         unit = UNITS_BY_ID[uid]
         item_id = f"new_{uid}"
