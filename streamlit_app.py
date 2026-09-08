@@ -5,6 +5,9 @@ import math
 import json
 import os
 import re
+import hashlib
+import hmac
+import secrets
 import sqlite3
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -37,6 +40,22 @@ def generate_ai_response(instruction: str, fallback: str) -> str:
     client = ai_client()
     if client is None:
         return fallback
+
+
+def password_digest(password: str, salt: bytes | None = None) -> str:
+    """Hash passwords with PBKDF2; plaintext credentials never enter SQLite."""
+    actual_salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), actual_salt, 180_000)
+    return f"{actual_salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, encoded: str) -> bool:
+    try:
+        salt_hex, digest_hex = encoded.split("$", 1)
+        expected = password_digest(password, bytes.fromhex(salt_hex)).split("$", 1)[1]
+        return hmac.compare_digest(expected, digest_hex)
+    except (ValueError, TypeError):
+        return False
     try:
         response = client.models.generate_content(
             model="gemini-2.0-flash",
@@ -267,6 +286,7 @@ class Repository:
         CREATE TABLE IF NOT EXISTS learning_unit (unit_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS daily_goal_blueprint (blueprint_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS coach_message (message_id INTEGER PRIMARY KEY AUTOINCREMENT, learner_id TEXT NOT NULL, role TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS account (username TEXT PRIMARY KEY, password_digest TEXT NOT NULL, learner_id TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL);
         """)
         self.db.executemany("INSERT OR IGNORE INTO learning_unit VALUES (?,?)", [(unit.id, unit.title) for unit in UNITS])
         self.db.executemany("INSERT OR IGNORE INTO daily_goal_blueprint VALUES (?,?)", [(blueprint.id, blueprint.outcome) for blueprint in BLUEPRINTS])
@@ -275,6 +295,23 @@ class Repository:
     def ensure(self, learner_id: str) -> sqlite3.Row:
         self.db.execute("INSERT OR IGNORE INTO learner VALUES (?,?,?,?,?,1)", (learner_id, "Learner", "完成 HSK1 基础中文学习", 20, "")); self.db.commit()
         return self.db.execute("SELECT * FROM learner WHERE learner_id=?", (learner_id,)).fetchone()
+
+    def register_account(self, username: str, password: str) -> tuple[bool, str]:
+        clean_name = re.sub(r"[^a-zA-Z0-9_-]", "", username.strip()).lower()
+        if len(clean_name) < 3 or len(password) < 8:
+            return False, "用户名至少 3 个字符，密码至少 8 个字符。"
+        learner_id = f"learner_{clean_name}"
+        try:
+            self.db.execute("INSERT INTO account VALUES (?,?,?,?)", (clean_name, password_digest(password), learner_id, datetime.utcnow().isoformat(timespec="seconds")))
+            self.db.commit()
+        except sqlite3.IntegrityError:
+            return False, "该用户名已经存在。"
+        self.ensure(learner_id)
+        return True, learner_id
+
+    def authenticate(self, username: str, password: str) -> str | None:
+        row = self.db.execute("SELECT * FROM account WHERE username=?", (username.strip().lower(),)).fetchone()
+        return str(row["learner_id"]) if row and verify_password(password, row["password_digest"]) else None
 
     def progress(self, learner_id: str) -> dict[str, sqlite3.Row]:
         return {row["concept_id"]: row for row in self.db.execute("SELECT * FROM concept_progress WHERE learner_id=?", (learner_id,)).fetchall()}
@@ -610,6 +647,31 @@ def render_goal_presets(repository: Repository, learner_id: str) -> None:
                     learner = repository.ensure(learner_id); repository.save_profile(learner_id, learner["name"], learner["minutes"], [theme]); st.success("Theme saved. Curriculum sequence is unchanged.")
 
 
+def render_authentication(repository: Repository) -> str | None:
+    """Render local authentication and return the authenticated learner id."""
+    st.markdown("<div class='hero'><div class='hero-kicker'>GOALCOACH</div><div class='hero-title'>Your Chinese learning coach</div><div class='hero-subtitle'>Sign in to keep your learning state across sessions.</div></div>", unsafe_allow_html=True)
+    login, register = st.tabs(["Sign in", "Create account"])
+    with login:
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Sign in", type="primary", key="login_submit"):
+            learner_id = repository.authenticate(username, password)
+            if learner_id:
+                st.session_state["authenticated_learner"] = learner_id
+                st.rerun()
+            st.error("用户名或密码不正确。")
+    with register:
+        username = st.text_input("New username", key="register_username")
+        password = st.text_input("New password (8+ characters)", type="password", key="register_password")
+        if st.button("Create account", key="register_submit"):
+            success, result = repository.register_account(username, password)
+            if success:
+                st.session_state["authenticated_learner"] = result
+                st.rerun()
+            st.error(result)
+    return None
+
+
 def main() -> None:
     st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide")
     st.markdown("""<style>
@@ -624,8 +686,15 @@ def main() -> None:
     .section-label { color:#047857; margin:26px 0 10px; } .task-row { display:flex; gap:15px; align-items:center; min-height:58px; } .task-icon { width:42px;height:42px;border-radius:14px;background:#ecfdf5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800; } .task-kind { color:#059669;font-size:10px;font-weight:800;letter-spacing:.1em; } .task-title { font-size:17px;font-weight:800;margin:3px 0; } .task-caption,.concept-en { color:#71717a;font-size:12px; } .module-header { margin-top:26px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--line);padding:0 2px 10px;font-size:19px;font-weight:800; } .module-header small { color:#71717a;font-size:11px;font-weight:500; } .concept-card { background:white;border:1px solid var(--line);border-radius:18px;padding:16px;margin:8px 0;min-height:122px;box-shadow:0 3px 10px #00000008; } .concept-number { color:#a1a1aa;font-size:10px;font-weight:800;letter-spacing:.1em; } .concept-title { font-size:15px;font-weight:800;margin:7px 0 2px; } .bar { height:5px;background:#f4f4f5;border-radius:9px;margin:14px 0 8px;overflow:hidden; } .bar span { display:block;height:100%;background:#10b981;border-radius:9px; } .concept-meta { color:#059669;font-size:10px;font-weight:700;display:flex;justify-content:space-between; } .stButton>button { border-radius:12px;font-weight:700;border:1px solid #d4d4d8; } .stButton>button[kind='primary'] { background:#10b981;color:#052e16;border:0; }
     </style>""", unsafe_allow_html=True)
     repository = Repository()
-    requested_learner = str(st.query_params.get("learner", "streamlit_learner")).strip()
-    learner_id = re.sub(r"[^a-zA-Z0-9_-]", "", requested_learner)[:48] or "streamlit_learner"
+    learner_id = st.session_state.get("authenticated_learner")
+    if not learner_id:
+        render_authentication(repository)
+        return
+    if st.sidebar.button("Sign out"):
+        del st.session_state["authenticated_learner"]
+        st.rerun()
+    requested_learner = str(st.query_params.get("learner", learner_id)).strip()
+    learner_id = re.sub(r"[^a-zA-Z0-9_-]", "", requested_learner)[:48] or learner_id
     learner = repository.ensure(learner_id)
     with st.sidebar:
         st.title("🎯 GoalCoach"); st.caption(f"Learner: {learner_id}")
