@@ -76,6 +76,23 @@ UNITS = tuple(Unit(f"unit_{concept.id}", (concept.id,), concept.title) for conce
 UNITS_BY_ID = {unit.id: unit for unit in UNITS}
 BLUEPRINTS = tuple(GoalBlueprint(f"goal_{index:02d}", "建立第一组发音锚点" if index == 1 else f"HSK1 交际目标 {index}", "Recognize and produce today's target language.", tuple(unit.id for unit in UNITS[(index - 1) * 4:index * 4]), tuple(concept.id for concept in CONCEPTS[(index - 1) * 4:index * 4]), CONCEPTS[(index - 1) * 4].theme) for index in range(1, math.ceil(len(CONCEPTS) / 4) + 1))
 
+PINYIN_CARDS = (
+    ("四声", "mā / má / mǎ / mà", "妈 / 麻 / 马 / 骂", "One syllable, four meanings. Hold the contour, not just the spelling."),
+    ("声母", "b / p / m / f", "八 / 怕 / 妈 / 发", "b is unaspirated; p has a clear puff of air."),
+    ("韵母", "ai / ei / ao / ou", "爱 / 飞 / 好 / 口", "Move smoothly from the first vowel into the second."),
+    ("三声变调", "nǐ hǎo → ní hǎo", "你好", "The first third tone commonly rises before another third tone."),
+    ("轻声", "ma / ne / ba", "好吗？你呢？", "Keep the particle short and light."),
+)
+
+EXERCISES = (
+    ("hsk1_c01", "Translate: Hello!", "你好", "你好"),
+    ("hsk1_c02", "Say: My name is Anna.", "我叫安娜", "我叫"),
+    ("hsk1_c03", "Say: I am a student.", "我是学生", "我是"),
+    ("hsk1_c04", "Turn this into a question: 你是学生。", "你是学生吗", "吗"),
+    ("hsk1_c10", "Say: I want to drink tea.", "我想喝茶", "我想喝茶"),
+    ("hsk1_c20", "Say: I like coffee.", "我喜欢咖啡", "我喜欢"),
+)
+
 
 class Repository:
     def __init__(self, path: Path = DB_PATH) -> None:
@@ -199,6 +216,73 @@ def render_learn(repository: Repository, learner_id: str) -> None:
         (st.success if score >= .75 else st.warning)(f"{feedback} State version: {version}")
 
 
+def render_pinyin(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>PRONUNCIATION LAB</div>", unsafe_allow_html=True)
+    st.title("Pinyin Lab")
+    st.caption("Learn one sound target at a time, then prove it with listening and production.")
+    unit_names = ["Unit 1 · Syllable map", "Unit 2 · Four tones", "Unit 3 · Initial contrasts", "Unit 4 · Compound finals", "Unit 5 · Tone sandhi"]
+    selected = st.selectbox("Unit", unit_names)
+    index = unit_names.index(selected)
+    st.markdown(f"<div class='hero'><div class='hero-kicker'>UNIT {index + 1} · PRONUNCIATION</div><div class='hero-title'>{PINYIN_CARDS[index][0]}</div><div class='hero-subtitle'>{PINYIN_CARDS[index][1]}</div><div class='hero-outcome'>{PINYIN_CARDS[index][3]}</div></div>", unsafe_allow_html=True)
+    left, right = st.columns([1, 1])
+    with left:
+        st.subheader("Listen and notice")
+        st.markdown(f"### {PINYIN_CARDS[index][2]}")
+        st.code(PINYIN_CARDS[index][1], language="text")
+        st.info("Read the pinyin aloud twice. Notice the mouth shape and pitch movement.")
+    with right:
+        st.subheader("Controlled production")
+        response = st.text_input("Type the target pinyin or Hanzi", key=f"pinyin_{index}")
+        expected = PINYIN_CARDS[index][1].split(" /")[0].strip()
+        if st.button("Check pronunciation evidence", type="primary"):
+            quality = 1.0 if normalize(response) == normalize(expected) else .75 if response.strip() else .2
+            unit = UNITS[index]
+            item = PlanItem(f"pinyin_unit_{index + 1}", "new", unit.concept_ids, (unit.id,), unit.title, 3)
+            version = repository.record(learner_id, item, "attempt", quality, 180, 1.0 if quality >= .8 else .75)
+            if quality >= .75: st.success(f"Good production evidence. State version: {version}")
+            else: st.warning("Try again with the target sound.")
+    st.divider()
+    st.subheader("Tone reference")
+    tone_cols = st.columns(4)
+    for column, (tone, contour, description) in zip(tone_cols, (("1", "55", "high and flat"), ("2", "35", "rising"), ("3", "214", "low/dipping"), ("4", "51", "falling"))):
+        with column: st.metric(f"Tone {tone}", contour); st.caption(description)
+
+
+def normalize(value: str) -> str:
+    return re.sub(r"[\s，。！？,.!?]", "", value.strip().lower()).replace("u:", "ü").replace("v", "ü")
+
+
+def render_practice(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>GUIDED PRACTICE</div>", unsafe_allow_html=True)
+    st.title("Practice Studio")
+    st.caption("Short controlled practice prepares you for the final Freeform goal check.")
+    labels = [f"{cid} · {prompt}" for cid, prompt, _, _ in EXERCISES]
+    selected = st.selectbox("Exercise", labels)
+    cid, prompt, expected, hint = EXERCISES[labels.index(selected)]
+    st.markdown(f"<div class='concept-card'><div class='concept-number'>TARGET CONCEPT</div><div class='concept-title'>{CONCEPTS_BY_ID[cid].title}</div><div class='concept-en'>{prompt}</div></div>", unsafe_allow_html=True)
+    answer = st.text_input("Your answer", key=f"exercise_{cid}")
+    st.caption(f"Hint: {hint}")
+    if st.button("Submit answer", type="primary"):
+        score, feedback = grade(answer, expected)
+        unit = UNITS_BY_ID[f"unit_{cid}"]; item = PlanItem(f"practice_{cid}", "new", (cid,), (unit.id,), CONCEPTS_BY_ID[cid].title, 3)
+        version = repository.record(learner_id, item, "attempt", score, 180, 1.0 if score >= .75 else .75)
+        if score >= .75: st.success(f"{feedback} · State version {version}")
+        else: st.warning(feedback)
+
+
+def render_profile(repository: Repository, learner_id: str) -> None:
+    learner = repository.ensure(learner_id)
+    st.markdown("<div class='page-kicker'>LEARNER SETTINGS</div>", unsafe_allow_html=True)
+    st.title("Learner Profile")
+    with st.form("profile_form"):
+        name = st.text_input("Name", learner["name"])
+        goal = st.text_area("Goal", learner["goal"])
+        minutes = st.slider("Daily available minutes", 5, 120, int(learner["minutes"]), 5)
+        interests = st.multiselect("Interest themes", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        if st.form_submit_button("Save profile", type="primary"):
+            repository.save_profile(learner_id, name, minutes, interests); st.success("Profile saved. Your curriculum order remains unchanged; only examples and scenes adapt.")
+
+
 def main() -> None:
     st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide")
     st.markdown("""<style>
@@ -214,11 +298,14 @@ def main() -> None:
     </style>""", unsafe_allow_html=True)
     repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
     with st.sidebar:
-        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Curriculum", "Progress"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Curriculum", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
     if page == "Today": render_today(repository, learner_id)
     elif page == "Learn": render_learn(repository, learner_id)
+    elif page == "Practice": render_practice(repository, learner_id)
+    elif page == "Pinyin Lab": render_pinyin(repository, learner_id)
     elif page == "Curriculum": render_curriculum(repository, learner_id)
+    elif page == "Profile": render_profile(repository, learner_id)
     else:
         rows = repository.progress(learner_id); coverage = sum(float(row["learned"]) > 0 for row in rows.values()) / len(CONCEPTS); readiness = sum(float(row["mastery"]) * retention(row) for row in rows.values()) / len(CONCEPTS); st.title("Progress"); first, second = st.columns(2); first.metric("Course coverage", f"{coverage:.0%}"); second.metric("Current readiness", f"{readiness:.0%}"); st.caption("Readiness can decay with time; course coverage does not.")
 
