@@ -381,6 +381,15 @@ class Repository:
             "errors": [{"Concept": CONCEPTS_BY_ID.get(item["concept_id"], Concept("", item["concept_id"], "", "", 0, "")).title, "Error": item["error_code"], "Occurrences": item["occurrences"]} for item in errors[:10]],
         }
 
+    def export_learner(self, learner_id: str) -> str:
+        """Export learner state as a portable, schema-versioned JSON snapshot."""
+        learner = dict(self.ensure(learner_id))
+        progress = [dict(row) for row in self.db.execute("SELECT * FROM concept_progress WHERE learner_id=?", (learner_id,)).fetchall()]
+        events = [dict(row) for row in self.db.execute("SELECT * FROM learning_event WHERE learner_id=? ORDER BY created_at", (learner_id,)).fetchall()]
+        errors = [dict(row) for row in self.errors(learner_id)]
+        messages = [{"role": role, "message": message} for role, message in self.coach_history(learner_id)]
+        return json.dumps({"schema_version": 1, "exported_at": datetime.utcnow().isoformat(timespec="seconds"), "learner": learner, "progress": progress, "events": events, "errors": errors, "coach_messages": messages}, ensure_ascii=False, indent=2)
+
 
 def retention(row: sqlite3.Row | None) -> float:
     if not row or not row["last_reviewed"]: return 0.0
@@ -568,6 +577,10 @@ def render_profile(repository: Repository, learner_id: str) -> None:
         interests = st.multiselect("Interest themes", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.form_submit_button("Save profile", type="primary"):
             repository.save_profile(learner_id, name, minutes, interests); st.success("Profile saved. Your curriculum order remains unchanged; only examples and scenes adapt.")
+    st.divider()
+    st.subheader("Data portability")
+    st.caption("Download a complete JSON backup of your profile, progress, events, errors and Coach history.")
+    st.download_button("Download learner backup", repository.export_learner(learner_id), file_name=f"goalcoach-{learner_id}.json", mime="application/json")
 
 
 def render_pinyin_chart() -> None:
