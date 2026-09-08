@@ -6,6 +6,8 @@ import json
 import os
 import re
 import sqlite3
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -44,6 +46,28 @@ def generate_ai_response(instruction: str, fallback: str) -> str:
         return text.strip() if text else fallback
     except (OSError, RuntimeError, ValueError):
         return fallback
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def chinese_speech(text: str) -> bytes | None:
+    """Fetch a small Chinese pronunciation clip for lessons and teaching cards."""
+    clean_text = re.sub(r"[^\u4e00-\u9fffA-Za-z0-9 ]", "", text)
+    if not clean_text.strip():
+        return None
+    url = "https://translate.google.com/translate_tts?ie=UTF-8&tl=zh-CN&client=tw-ob&q=" + quote(clean_text)
+    try:
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(request, timeout=8) as response:
+            return response.read()
+    except (OSError, ValueError):
+        return None
+
+
+def render_audio(text: str) -> None:
+    """Render pronunciation when the upstream TTS service is available."""
+    audio = chinese_speech(text)
+    if audio:
+        st.audio(audio, format="audio/mp3")
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,6 +417,7 @@ def render_pinyin(repository: Repository, learner_id: str) -> None:
         st.subheader("Listen and notice")
         st.markdown(f"### {PINYIN_CARDS[index][2]}")
         st.code(PINYIN_CARDS[index][1], language="text")
+        render_audio(PINYIN_CARDS[index][2])
         st.info("Read the pinyin aloud twice. Notice the mouth shape and pitch movement.")
     with right:
         st.subheader("Controlled production")
@@ -480,6 +505,7 @@ def render_teaching_cards() -> None:
             st.markdown(f"**{card['card_type'].replace('_', ' ').title()}**")
             st.subheader(card["prompt_zh"] or card["meaning_en"] or "Teaching card")
             if card["pinyin"]: st.code(card["pinyin"], language="text")
+            if card["prompt_zh"]: render_audio(card["prompt_zh"])
             if card["explanation_en"]: st.write(card["explanation_en"])
             if card["example_zh"]: st.info(f"{card['example_zh']} · {card['example_pinyin'] or ''} · {card['example_en'] or ''}")
 
