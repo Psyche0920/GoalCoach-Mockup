@@ -34,6 +34,33 @@ class Unit:
 
 
 @dataclass(frozen=True, slots=True)
+class LearningStep:
+    step_type: str
+    instruction: str
+    minutes: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContentCard:
+    card_id: str
+    concept_id: str
+    purpose: str
+    prompt: str
+    example: str
+    reviewed_by_human: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class FreeformSpec:
+    mode: str
+    target_concept_ids: tuple[str, ...]
+    allowed_scripts: tuple[str, ...]
+    minimum_turns: int
+    target_score: float
+    task_score: float
+
+
+@dataclass(frozen=True, slots=True)
 class GoalBlueprint:
     id: str
     title: str
@@ -42,6 +69,7 @@ class GoalBlueprint:
     concept_ids: tuple[str, ...]
     theme: str
     minutes: int = 16
+    freeform: FreeformSpec | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +102,39 @@ CONCEPTS = build_curriculum()
 CONCEPTS_BY_ID = {concept.id: concept for concept in CONCEPTS}
 UNITS = tuple(Unit(f"unit_{concept.id}", (concept.id,), concept.title) for concept in CONCEPTS)
 UNITS_BY_ID = {unit.id: unit for unit in UNITS}
-BLUEPRINTS = tuple(GoalBlueprint(f"goal_{index:02d}", "建立第一组发音锚点" if index == 1 else f"HSK1 交际目标 {index}", "Recognize and produce today's target language.", tuple(unit.id for unit in UNITS[(index - 1) * 4:index * 4]), tuple(concept.id for concept in CONCEPTS[(index - 1) * 4:index * 4]), CONCEPTS[(index - 1) * 4].theme) for index in range(1, math.ceil(len(CONCEPTS) / 4) + 1))
+UNIT_STEPS = {
+    unit.id: tuple(
+        LearningStep(step_type, f"{step_type.replace('_', ' ').title()}: {unit.title}", 1)
+        for step_type in ("hook", "notice", "explain", "controlled_practice", "retrieval", "output")
+    )
+    for unit in UNITS
+}
+CONTENT_CARDS = tuple(
+    ContentCard(f"card_{unit.id}", unit.concept_ids[0], "production", unit.title, "Use today's target in one short sentence.")
+    for unit in UNITS
+)
+BLUEPRINTS = tuple(GoalBlueprint(f"goal_{index:02d}", "建立第一组发音锚点" if index == 1 else f"HSK1 交际目标 {index}", "Recognize and produce today's target language.", tuple(unit.id for unit in UNITS[(index - 1) * 4:index * 4]), tuple(concept.id for concept in CONCEPTS[(index - 1) * 4:index * 4]), CONCEPTS[(index - 1) * 4].theme, 16, FreeformSpec("scenario_dialogue" if index < 4 else "writing", tuple(concept.id for concept in CONCEPTS[(index - 1) * 4:index * 4]), ("hanzi", "pinyin_tone_marks", "pinyin_tone_numbers"), 2, .75, .75)) for index in range(1, math.ceil(len(CONCEPTS) / 4) + 1))
+
+
+def validate_curriculum() -> None:
+    concept_ids = {concept.id for concept in CONCEPTS}
+    unit_ids = {unit.id for unit in UNITS}
+    referenced_units = {unit_id for blueprint in BLUEPRINTS for unit_id in blueprint.unit_ids}
+    errors: list[str] = []
+    for concept in CONCEPTS:
+        if not any(concept.id in unit.concept_ids for unit in UNITS): errors.append(f"orphan concept: {concept.id}")
+        if concept.prerequisite and concept.prerequisite not in concept_ids: errors.append(f"invalid prerequisite: {concept.id}")
+    for unit in UNITS:
+        if unit.id not in referenced_units: errors.append(f"orphan unit: {unit.id}")
+        if any(cid not in concept_ids for cid in unit.concept_ids): errors.append(f"invalid unit concept: {unit.id}")
+        if sum(step.minutes for step in UNIT_STEPS[unit.id]) != 6: errors.append(f"invalid step budget: {unit.id}")
+    for blueprint in BLUEPRINTS:
+        if any(uid not in unit_ids for uid in blueprint.unit_ids): errors.append(f"invalid blueprint unit: {blueprint.id}")
+        if any(cid not in concept_ids for cid in blueprint.concept_ids): errors.append(f"invalid blueprint concept: {blueprint.id}")
+    if errors: raise RuntimeError("Curriculum validation failed: " + "; ".join(errors))
+
+
+validate_curriculum()
 
 PINYIN_CARDS = (
     ("四声", "mā / má / mǎ / mà", "妈 / 麻 / 马 / 骂", "One syllable, four meanings. Hold the contour, not just the spelling."),
@@ -104,7 +164,11 @@ class Repository:
         CREATE TABLE IF NOT EXISTS learner (learner_id TEXT PRIMARY KEY, name TEXT NOT NULL, goal TEXT NOT NULL, minutes INTEGER NOT NULL, interests TEXT NOT NULL, state_version INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS concept_progress (learner_id TEXT NOT NULL, concept_id TEXT NOT NULL, learned REAL NOT NULL DEFAULT 0, mastery REAL NOT NULL DEFAULT 0, retention REAL NOT NULL DEFAULT 0, reviews INTEGER NOT NULL DEFAULT 0, evidence_days INTEGER NOT NULL DEFAULT 0, quality REAL NOT NULL DEFAULT 0, last_reviewed TEXT, next_review TEXT, PRIMARY KEY (learner_id, concept_id));
         CREATE TABLE IF NOT EXISTS learning_event (event_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, plan_item_id TEXT NOT NULL, concept_ids TEXT NOT NULL, event_type TEXT NOT NULL, active_seconds INTEGER NOT NULL, estimated_minutes INTEGER NOT NULL, engagement REAL NOT NULL, quality REAL NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS learning_unit (unit_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS daily_goal_blueprint (blueprint_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         """)
+        self.db.executemany("INSERT OR IGNORE INTO learning_unit VALUES (?,?)", [(unit.id, unit.title) for unit in UNITS])
+        self.db.executemany("INSERT OR IGNORE INTO daily_goal_blueprint VALUES (?,?)", [(blueprint.id, blueprint.outcome) for blueprint in BLUEPRINTS])
         self.db.commit()
 
     def ensure(self, learner_id: str) -> sqlite3.Row:
