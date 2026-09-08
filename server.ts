@@ -3,11 +3,18 @@ import cors from 'cors';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import { HSK1_CONCEPTS, HSK1_TEACHING_CARDS, HSK1_EXERCISES, THEME_REGISTRY, GOAL_PRESETS } from './src/data/hsk1Curriculum.ts';
-import { LearnerState, DailyPlan, PlanItem, ConceptMastery, ErrorRecord, AnswerSubmission, LearningGoal, CurriculumTheme } from './src/types.ts';
+import { HSK1_TEACHING_CARDS, HSK1_EXERCISES, THEME_REGISTRY, GOAL_PRESETS } from './src/data/hsk1Curriculum.ts';
+import { LearnerState, DailyPlan, PlanItem, ConceptMastery, ErrorRecord, AnswerSubmission, LearningGoal, CurriculumTheme, ConceptProgress, LearningEvent } from './src/types.ts';
 import { gradeAnswer } from './src/domain/grader.ts';
 import { calculateRetention, isConceptReviewDue } from './src/domain/retention.ts';
 import { route, computeOverallProgress } from './src/domain/orchestrator.ts';
+import { DAILY_GOAL_BLUEPRINTS, LEARNING_UNITS, SYSTEM_CURRICULUM_CONCEPTS } from './src/data/curriculumEngine.ts';
+import { CurriculumCoverageValidator } from './src/domain/curriculumValidator.ts';
+import { generateDailyPlan } from './src/domain/planner.ts';
+import { SqliteLearnerRepository } from './src/infrastructure/sqliteLearnerRepository.ts';
+import { deriveStatus, projectProgress } from './src/domain/progress.ts';
+
+const HSK1_CONCEPTS = SYSTEM_CURRICULUM_CONCEPTS;
 
 const PORT = 3000;
 const app = express();
@@ -72,13 +79,13 @@ app.get('/api/tts', async (req: Request, res: Response) => {
   }
 });
 
-// In-Memory store for Learner States (ephemeral or persistent per session)
-const learnerStore = new Map<string, LearnerState>();
+new CurriculumCoverageValidator().validate(HSK1_CONCEPTS, LEARNING_UNITS, DAILY_GOAL_BLUEPRINTS);
+const learnerRepository = new SqliteLearnerRepository(path.resolve(process.cwd(), 'data', 'goalcoach.sqlite'));
+learnerRepository.saveCurriculum(LEARNING_UNITS, DAILY_GOAL_BLUEPRINTS);
 
 function getOrCreateLearner(learnerId: string): LearnerState {
-  if (learnerStore.has(learnerId)) {
-    return learnerStore.get(learnerId)!;
-  }
+  const persisted = learnerRepository.findState(learnerId);
+  if (persisted) return persisted;
 
   // Initialize fresh learner state for HSK 1
   const defaultGoal: LearningGoal = {
@@ -181,10 +188,56 @@ function getOrCreateLearner(learnerId: string): LearnerState {
     activePlan: defaultPlan,
     sessions: [],
     updatedAt: new Date().toISOString(),
+    stateVersion: 1,
+    conceptProgress: {},
   };
 
-  learnerStore.set(learnerId, newState);
+  learnerRepository.saveState(newState);
   return newState;
+}
+
+function getConceptProgress(state: LearnerState): Record<string, ConceptProgress> {
+  const progress = state.conceptProgress ?? {};
+  for (const concept of HSK1_CONCEPTS) {
+    if (progress[concept.conceptId]) continue;
+    const legacy = state.mastery[concept.conceptId];
+    const learnedPercent = legacy ? Math.min(100, legacy.evidenceCount * 34) : 0;
+    const row: ConceptProgress = {
+      learnerId: state.learnerId,
+      conceptId: concept.conceptId,
+      learnedPercent,
+      masteryScore: legacy?.masteryScore ?? 0,
+      retentionAtReview: legacy?.retentionScore ?? 0,
+      decayLambda: legacy?.decayLambda ?? 0.05,
+      successfulSpacedRetrievals: Math.min(legacy?.evidenceCount ?? 0, 3),
+      evidenceDays: legacy ? 1 : 0,
+      averageQuality: legacy?.masteryScore ?? 0,
+      status: 'not_started',
+      lastReviewedAt: legacy?.lastReviewedAt,
+      nextReviewAt: legacy?.nextReviewAt,
+    };
+    row.status = deriveStatus(row);
+    progress[concept.conceptId] = row;
+  }
+  state.conceptProgress = progress;
+  return progress;
+}
+
+function createProjections(state: LearnerState, events: readonly LearningEvent[] = []) {
+  const progress = Object.values(getConceptProgress(state));
+  const weights = Object.fromEntries(HSK1_CONCEPTS.map((concept) => [concept.conceptId, concept.weight ?? 1]));
+  const progressSummary = projectProgress(progress, weights, events, new Date().toISOString(), state.stateVersion ?? 1);
+  const curriculumTree = {
+    stateVersion: state.stateVersion ?? 1,
+    modules: ['module1_pinyin', 'module2_grammar', 'module3_thematic'].map((moduleId) => ({
+      moduleId,
+      concepts: HSK1_CONCEPTS.filter((concept) => concept.module === moduleId || concept.moduleId === moduleId).map((concept) => ({
+        ...concept,
+        progress: state.conceptProgress?.[concept.conceptId],
+      })),
+    })),
+  };
+  return { progressSummary, curriculumTree };
 }
 
 // 1. Health check (matches FastAPI /health)
@@ -224,8 +277,9 @@ app.get('/api/v1/learners/:learner_id', (req: Request, res: Response) => {
   const learnerId = req.params.learner_id;
   const state = getOrCreateLearner(learnerId);
   const nextAction = route(state);
-  const overallProg = computeOverallProgress(state);
-  res.json({ state, nextAction, overallProgress: overallProg });
+  const projections = createProjections(state);
+  learnerRepository.saveState(state);
+  res.json({ state, nextAction, overallProgress: projections.progressSummary.goalCompletion, ...projections });
 });
 
 app.post('/api/v1/learners/:learner_id/goal', (req: Request, res: Response) => {
@@ -245,6 +299,8 @@ app.post('/api/v1/learners/:learner_id/goal', (req: Request, res: Response) => {
   };
   state.goalChanged = true;
   state.updatedAt = new Date().toISOString();
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  learnerRepository.saveState(state);
 
   res.json({ state, nextAction: route(state) });
 });
@@ -426,6 +482,9 @@ app.post('/api/v1/learners/:learner_id/plan', (req: Request, res: Response) => {
   };
   state.goalChanged = false;
   state.updatedAt = now.toISOString();
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  state.activePlan.stateVersion = state.stateVersion;
+  learnerRepository.saveState(state);
 
   res.json({ plan: state.activePlan, state, nextAction: route(state) });
 });
@@ -538,6 +597,8 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
   }
 
   state.updatedAt = new Date().toISOString();
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  learnerRepository.saveState(state);
   const overallProg = computeOverallProgress(state);
 
   res.json({
@@ -618,12 +679,148 @@ app.post('/api/v1/learners/:learner_id/complete-concept', (req: Request, res: Re
   }
 
   state.updatedAt = new Date().toISOString();
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  learnerRepository.saveState(state);
   const overallProg = computeOverallProgress(state);
 
   res.json({
     state,
     overallProgress: overallProg,
     nextAction: route(state),
+  });
+});
+
+app.get('/api/v1/learners/:learnerId/today-plan', (req: Request, res: Response) => {
+  const state = getOrCreateLearner(req.params.learnerId);
+  const now = new Date().toISOString();
+  const plan = generateDailyPlan({
+    learnerId: state.learnerId,
+    date: now,
+    budgetMinutes: state.goal?.dailyAvailableMinutes ?? 20,
+    concepts: HSK1_CONCEPTS,
+    units: LEARNING_UNITS,
+    blueprints: DAILY_GOAL_BLUEPRINTS,
+    progress: getConceptProgress(state),
+    errors: state.errorProfile,
+    interests: state.goal?.interests ?? [],
+    stateVersion: state.stateVersion ?? 1,
+  });
+  state.activePlan = plan;
+  state.updatedAt = now;
+  learnerRepository.saveState(state);
+  res.json(plan);
+});
+
+app.get('/api/v1/learners/:learnerId/progress-summary', (req: Request, res: Response) => {
+  const state = getOrCreateLearner(req.params.learnerId);
+  res.json(createProjections(state).progressSummary);
+});
+
+app.get('/api/v1/learners/:learnerId/curriculum-tree', (req: Request, res: Response) => {
+  const state = getOrCreateLearner(req.params.learnerId);
+  res.json(createProjections(state).curriculumTree);
+});
+
+app.post('/api/v1/learning-events', (req: Request, res: Response) => {
+  const body = req.body as Partial<LearningEvent> & { learnerId?: string };
+  if (!body.learnerId || !body.planItemId || !body.eventType || !Array.isArray(body.conceptIds)) {
+    res.status(400).json({ error: 'learnerId, planItemId, eventType and conceptIds are required' });
+    return;
+  }
+  const state = getOrCreateLearner(body.learnerId);
+  const item = state.activePlan?.items.find((candidate) => candidate.id === body.planItemId);
+  if (!item) {
+    res.status(404).json({ error: 'Plan item not found' });
+    return;
+  }
+  const declaredIds = new Set(item.conceptIds ?? (item.conceptId ? [item.conceptId] : []));
+  if (body.conceptIds.some((id) => !declaredIds.has(id))) {
+    res.status(422).json({ error: 'Event references concepts outside the plan item boundary' });
+    return;
+  }
+  const allowedEngagement = new Set([0.25, 0.6, 0.75, 1]);
+  if (!allowedEngagement.has(body.engagementScore ?? -1)) {
+    res.status(422).json({ error: 'engagementScore must be one of 0.25, 0.60, 0.75 or 1.00' });
+    return;
+  }
+  const now = new Date().toISOString();
+  const startedAt = body.startedAt ?? now;
+  const lastActiveAt = body.lastActiveAt ?? now;
+  const elapsedSeconds = Math.max(0, (Date.parse(lastActiveAt) - Date.parse(startedAt)) / 1000);
+  const event: LearningEvent = {
+    id: body.id ?? `event_${Date.now()}`,
+    learnerId: state.learnerId,
+    planItemId: item.id,
+    conceptIds: body.conceptIds,
+    eventType: body.eventType,
+    startedAt,
+    lastActiveAt,
+    activeSeconds: Math.min(body.activeSeconds ?? 0, elapsedSeconds, item.estimatedMinutes * 60),
+    estimatedMinutes: item.estimatedMinutes,
+    engagementScore: body.engagementScore!,
+    gradingResult: body.gradingResult,
+    createdAt: now,
+  };
+  const quality = body.gradingResult
+    ? (body.gradingResult.scores.grammaticalCorrectness + body.gradingResult.scores.semanticPrecision + body.gradingResult.scores.pragmaticAppropriateness) / 3
+    : body.engagementScore!;
+  const progress = getConceptProgress(state);
+  const affected = body.conceptIds.map((conceptId) => {
+    const current = progress[conceptId];
+    const output = event.eventType === 'output' ? 1 : 0;
+    const practice = event.eventType === 'attempt' || event.eventType === 'review' ? 1 : 0;
+    const card = event.eventType === 'card' || event.eventType === 'audio' ? 1 : 0;
+    const learnedPercent = Math.min(100, current.learnedPercent + 100 * (0.4 * card + 0.4 * practice + 0.2 * output));
+    const successfulReview = event.eventType === 'review' && quality >= 0.8
+      && (!current.lastReviewedAt || current.lastReviewedAt.slice(0, 10) !== now.slice(0, 10));
+    const evidenceDays = current.lastReviewedAt?.slice(0, 10) === now.slice(0, 10) ? current.evidenceDays : current.evidenceDays + 1;
+    const evidenceCount = Math.max(1, current.successfulSpacedRetrievals + (successfulReview ? 1 : 0));
+    const updated: ConceptProgress = {
+      ...current,
+      learnedPercent: Math.min(100, learnedPercent),
+      masteryScore: event.eventType === 'review'
+        ? Math.min(1, current.masteryScore + (successfulReview ? 0.15 : 0))
+        : Math.max(current.masteryScore, Math.min(0.35, 0.35 * (learnedPercent / 100) * quality)),
+      retentionAtReview: quality,
+      successfulSpacedRetrievals: evidenceCount,
+      evidenceDays,
+      averageQuality: ((current.averageQuality * Math.max(0, evidenceCount - 1)) + quality) / evidenceCount,
+      lastReviewedAt: now,
+      nextReviewAt: new Date(Date.now() + Math.max(1, evidenceCount * 2) * 86_400_000).toISOString(),
+    };
+    updated.status = deriveStatus(updated);
+    progress[conceptId] = updated;
+    return updated;
+  });
+  const rulesPassed = (item.completionRules ?? []).every((rule) =>
+    affected.some((row) => row.conceptId === rule.conceptId && quality >= (rule.minimumQuality ?? 0)));
+  if (rulesPassed) {
+    item.completed = true;
+    item.completionCredit = 1;
+    item.completedMinutes = event.activeSeconds / 60;
+  }
+  if (item.kind === 'free_play' && rulesPassed && state.activePlan) state.activePlan.freeformCompleted = true;
+  if (state.activePlan && state.activePlan.items.every((candidate) => candidate.completed) && state.activePlan.freeformCompleted) {
+    state.activePlan.status = 'exhausted';
+  }
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  if (state.activePlan) state.activePlan.stateVersion = state.stateVersion;
+  state.updatedAt = now;
+  learnerRepository.appendEventAndProgress(event, affected, state);
+  const projections = createProjections(state, [event]);
+  res.json({
+    stateVersion: state.stateVersion,
+    plan: state.activePlan,
+    affectedConcepts: affected,
+    progressSummary: projections.progressSummary,
+    curriculumTree: projections.curriculumTree,
+  });
+});
+
+app.post('/api/v1/plan-items/:planItemId/complete', (req: Request, res: Response) => {
+  res.status(409).json({
+    error: 'Plan items complete only after their declared LearningEvent evidence rules pass.',
+    planItemId: req.params.planItemId,
   });
 });
 

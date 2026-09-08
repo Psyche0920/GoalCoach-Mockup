@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  Award,
 } from 'lucide-react';
 import {
   FIVE_PINYIN_UNITS,
@@ -49,6 +50,7 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
   } | null>(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('all');
   const [showUnitQuiz, setShowUnitQuiz] = useState<boolean>(false);
+  const [completedUnitScore, setCompletedUnitScore] = useState<number | null>(null);
 
   // Local state for phonemes marked mastered in this session
   const [masteredPhonemeIds, setMasteredPhonemeIds] = useState<Set<string>>(() => {
@@ -68,47 +70,6 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
     setMasteredPhonemeIds((prev) => {
       const next = new Set(prev);
       next.add(phonemeId);
-
-      if (onUpdateLearnerState) {
-        onUpdateLearnerState((oldState) => {
-          const currentConceptId = currentUnit.conceptId;
-          const oldMastery = oldState.mastery[currentConceptId] || {
-            conceptId: currentConceptId,
-            masteryScore: 0.5,
-            retentionScore: 0.7,
-            decayLambda: 0.05,
-            evidenceCount: 0,
-            intervalDays: 1,
-            lastReviewedAt: new Date().toISOString(),
-            weight: 1.0,
-          };
-
-          const newScore = Math.min(1.0, (oldMastery.masteryScore || 0.5) + 0.1);
-          const newEvidence = (oldMastery.evidenceCount || 0) + 1;
-
-          return {
-            ...oldState,
-            mastery: {
-              ...oldState.mastery,
-              [currentConceptId]: {
-                ...oldMastery,
-                masteryScore: newScore,
-                retentionScore: Math.min(1.0, (oldMastery.retentionScore || 0.7) + 0.05),
-                evidenceCount: newEvidence,
-                lastReviewedAt: new Date().toISOString(),
-              },
-            },
-            coachPreferences: {
-              ...oldState.coachPreferences,
-              masteredPinyinIds: Array.from(next),
-            },
-            todayStudiedConceptIds: Array.from(
-              new Set([...(oldState.todayStudiedConceptIds || []), currentConceptId])
-            ),
-          };
-        });
-      }
-
       return next;
     });
   };
@@ -154,6 +115,7 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
     if (hasNextStation) {
       setCurrentUnit(FIVE_PINYIN_UNITS[currentUnitIndex + 1]);
       setShowUnitQuiz(false);
+      setCompletedUnitScore(null);
       setSelectedSubCategory('all');
     }
   };
@@ -161,10 +123,7 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
   // Handle unit quiz completion
   const handleCompleteUnitPractice = (score: number) => {
     onComplete(score);
-    setShowUnitQuiz(false);
-    if (hasNextStation) {
-      setCurrentUnit(FIVE_PINYIN_UNITS[currentUnitIndex + 1]);
-    }
+    setCompletedUnitScore(score);
   };
 
   // Find corresponding legacy unit for quiz if available
@@ -253,7 +212,26 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
 
         {/* Main Body Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-          {showUnitQuiz ? (
+          {completedUnitScore !== null ? (
+            <div className="bg-white border-2 border-zinc-950 rounded-3xl p-8 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-5">
+              <Award className="w-12 h-12 mx-auto text-emerald-600" />
+              <div>
+                <h3 className="text-xl font-black">Unit {currentUnit.unitNumber} complete</h3>
+                <p className="text-sm text-zinc-600 mt-2">Learning evidence saved. Score: {completedUnitScore}%.</p>
+                <p className="text-xs text-zinc-500 mt-1">Mastery requires successful reviews across separate intervals.</p>
+              </div>
+              <div className="flex justify-center gap-3">
+                <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-xl border-2 border-zinc-950 bg-white font-black">
+                  Back to roadmap
+                </button>
+                {hasNextStation && (
+                  <button type="button" onClick={handleNextStation} className="px-5 py-2.5 rounded-xl border-2 border-zinc-950 bg-emerald-500 font-black">
+                    Next unit
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : showUnitQuiz ? (
             /* Cumulative Unit Practice View with Real-Time Vocab Match */
             <div className="bg-white border-2 border-zinc-950 rounded-3xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
               <PinyinUnitPracticeView

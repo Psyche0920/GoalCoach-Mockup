@@ -1,6 +1,6 @@
 export type Score = number; // 0.0 to 1.0
 
-export type PlanItemKind = 'review' | 'remedial' | 'new' | 'daily_quiz';
+export type PlanItemKind = 'review' | 'remedial' | 'new' | 'free_play' | 'daily_quiz';
 export type PlanStatus = 'active' | 'exhausted' | 'invalid';
 export type NextAction = 'plan_goal' | 'plan_review' | 'regenerate_plan' | 'teach';
 
@@ -55,10 +55,17 @@ export interface ErrorRecord {
 
 export interface PlanItem {
   id: string;
-  conceptId: string;
+  /** @deprecated Use conceptIds. Retained while legacy lesson launchers migrate. */
+  conceptId?: string;
+  conceptIds?: string[];
+  unitIds?: string[];
   kind: PlanItemKind;
+  outcome?: string;
   objective: string;
   estimatedMinutes: number;
+  completedMinutes?: number;
+  completionCredit?: number;
+  completionRules?: CompletionRule[];
   completed: boolean;
 }
 
@@ -69,6 +76,10 @@ export interface DailyPlan {
   status: PlanStatus;
   items: PlanItem[];
   rationale: string;
+  blueprintId?: string;
+  outcome?: string;
+  freeformCompleted?: boolean;
+  stateVersion?: number;
   generatedAt: string;
 }
 
@@ -138,7 +149,117 @@ export interface CurriculumConcept {
   vocabularyFocus: string[];
   difficulty: number;
   estimatedMinutes: number;
+  prerequisiteIds?: string[];
+  learningUnitIds?: string[];
+  dailyGoalBlueprintIds?: string[];
+  moduleId?: string;
+  weight?: number;
+  communicativeFunctions?: string[];
+  allowedVocabularyLevel?: number;
+  requiredOutputPattern?: string;
   tailoredExamples?: Record<string, { zh: string; pinyin: string; en: string }>;
+}
+
+export type LearningUnitRole = 'new_learning' | 'review' | 'remedial' | 'free_play_support';
+export type LearningStepType = 'hook' | 'notice' | 'explain' | 'controlled_practice' | 'retrieval' | 'output';
+
+export interface LearningStep {
+  id: string;
+  type: LearningStepType;
+  instruction: string;
+  estimatedMinutes: number;
+}
+
+export interface LearningUnit {
+  id: string;
+  conceptIds: string[];
+  functionId: string;
+  role: LearningUnitRole;
+  prerequisiteConceptIds: string[];
+  steps: LearningStep[];
+  supportedThemes: CurriculumTheme[];
+  vocabularySlots: string[];
+  estimatedMinutes: number;
+  difficulty: number;
+}
+
+export interface CompletionRule {
+  evidenceType: 'view' | 'listen' | 'controlled_practice' | 'retrieval' | 'output';
+  conceptId: string;
+  requiredCount: number;
+  minimumQuality?: number;
+}
+
+export interface FreeformAssessmentSpec {
+  mode: 'scenario_dialogue' | 'writing';
+  targetConceptIds: string[];
+  allowedInputScripts: Array<'hanzi' | 'pinyin_tone_marks' | 'pinyin_tone_numbers'>;
+  minimumTurns?: number;
+  completionGate: { targetConceptScore: number; taskAchievementScore: number };
+  allowedLanguage: string[];
+  example: string;
+}
+
+export interface DailyGoalBlueprint {
+  id: string;
+  title: string;
+  outcome: string;
+  requiredConceptIds: string[];
+  requiredUnitIds: string[];
+  outputTemplateId: string;
+  prerequisiteConceptIds: string[];
+  estimatedMinutes: number;
+  supportedThemes: CurriculumTheme[];
+  freeformAssessment: FreeformAssessmentSpec;
+}
+
+export interface ConceptProgress {
+  learnerId: string;
+  conceptId: string;
+  learnedPercent: number;
+  masteryScore: number;
+  retentionAtReview: number;
+  decayLambda: number;
+  successfulSpacedRetrievals: number;
+  evidenceDays: number;
+  averageQuality: number;
+  status: 'not_started' | 'learning' | 'almost_mastered' | 'mastered';
+  lastReviewedAt?: string;
+  nextReviewAt?: string;
+}
+
+export interface LearningEvent {
+  id: string;
+  learnerId: string;
+  planItemId: string;
+  conceptIds: string[];
+  eventType: 'card' | 'audio' | 'attempt' | 'output' | 'review';
+  startedAt: string;
+  lastActiveAt: string;
+  activeSeconds: number;
+  estimatedMinutes: number;
+  engagementScore: number;
+  gradingResult?: GradingResult;
+  createdAt: string;
+}
+
+export interface ProgressSummary {
+  stateVersion: number;
+  courseCoverage: number;
+  goalCompletion: number;
+  dailyEffectiveMinutes: number;
+}
+
+export interface PinyinContentMetadata {
+  targetInitials: string[];
+  targetFinals: string[];
+  targetTones: number[];
+  targetSyllables: string[];
+  vocabularyLevel: 'known' | 'today' | 'optional_interest';
+  prerequisiteConceptIds: string[];
+  pedagogicalPurpose: 'perception' | 'articulation' | 'blending' | 'contrast' | 'production';
+  reviewedByHuman: boolean;
+  reviewNotes?: string;
 }
 
 export interface AnswerSubmission {
@@ -189,4 +310,6 @@ export interface LearnerState {
   coachChatHistory?: Array<{ role: 'user' | 'assistant'; content: string; timestamp?: string }>;
   coachPreferences?: Record<string, any>;
   updatedAt: string;
+  stateVersion?: number;
+  conceptProgress?: Record<string, ConceptProgress>;
 }

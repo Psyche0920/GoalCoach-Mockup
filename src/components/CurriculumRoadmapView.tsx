@@ -93,15 +93,17 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
   // 3. Mastered (掌握 100%): Verified retained mastery score >= 0.85 (Ebbinghaus curve)
   const getNodeProgress = (concept: CurriculumConcept, moduleList: CurriculumConcept[], idx: number) => {
     const mastery = learnerState?.mastery?.[concept.conceptId];
-    const score = mastery?.masteryScore || 0;
-    const isMastered = score >= 0.85;
-    const isCompleted = score >= 0.65 || isMastered || (mastery?.evidenceCount || 0) > 0;
+    const progress = learnerState?.conceptProgress?.[concept.conceptId];
+    const score = progress?.masteryScore ?? mastery?.masteryScore ?? 0;
+    const learnedPercent = progress?.learnedPercent ?? ((mastery?.evidenceCount || 0) > 0 ? 100 : 0);
+    const isMastered = progress?.status === 'mastered';
+    const isCompleted = learnedPercent === 100;
 
     // A node is unlocked if it's the first in the module or the previous one is learned
     const isFirst = idx === 0;
     const prevConcept = isFirst ? null : moduleList[idx - 1];
-    const prevMastery = prevConcept ? learnerState?.mastery?.[prevConcept.conceptId] : null;
-    const prevLearned = isFirst || (prevMastery && (prevMastery.masteryScore >= 0.65 || (prevMastery.evidenceCount || 0) > 0));
+    const prevProgress = prevConcept ? learnerState?.conceptProgress?.[prevConcept.conceptId] : null;
+    const prevLearned = isFirst || prevProgress?.learnedPercent === 100;
     const isUnlocked = isFirst || Boolean(prevLearned);
     const isCurrentActive = isUnlocked && !isCompleted;
 
@@ -112,6 +114,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       isUnlocked,
       isCurrentActive,
       reviewCount: mastery?.evidenceCount || 0,
+      learnedPercent,
     };
   };
 
@@ -319,16 +322,19 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Learned: {node.isCompleted ? '100%' : '0%'}
+                          Learning: {Math.round(node.learnedPercent)}%
                         </span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                           node.isMastered 
                             ? 'bg-amber-100 text-amber-800 border border-amber-300 font-black' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Mastered: {Math.round(node.score * 100)}%
+                          Mastered: {node.isMastered ? `${Math.round(node.score * 100)}%` : '—'}
                         </span>
                       </div>
+                      <p className="text-[10px] text-zinc-500">
+                        Status: {node.isMastered ? 'Stable across spaced reviews' : node.isCompleted ? `Review stage ${Math.min(node.reviewCount, 4)}/4` : node.learnedPercent > 0 ? 'Complete one output task' : 'Not started'}
+                      </p>
                     </div>
                   </div>
                 </div>

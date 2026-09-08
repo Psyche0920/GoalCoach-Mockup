@@ -28,6 +28,13 @@ export function App() {
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const acceptLearnerState = (incoming: LearnerState) => {
+    setLearnerState((current) => {
+      if ((incoming.stateVersion ?? 0) < (current?.stateVersion ?? 0)) return current;
+      return incoming;
+    });
+  };
+
   // Fetch initial learner state and curriculum
   useEffect(() => {
     async function init() {
@@ -35,9 +42,16 @@ export function App() {
         const res = await fetch(`/api/v1/learners/${learnerId}`);
         if (res.ok) {
           const data = await res.json();
-          setLearnerState(data.state);
+          acceptLearnerState(data.state);
           setNextAction(data.nextAction);
           setOverallProgress(data.overallProgress);
+          const planRes = await fetch(`/api/v1/learners/${learnerId}/today-plan`);
+          if (planRes.ok) {
+            const plan = await planRes.json();
+            setLearnerState((current) => current && (plan.stateVersion ?? 0) >= (current.stateVersion ?? 0)
+              ? { ...current, activePlan: plan, stateVersion: plan.stateVersion }
+              : current);
+          }
         }
 
         const conceptsRes = await fetch('/api/v1/curriculum/concepts');
@@ -59,13 +73,12 @@ export function App() {
   // Handle plan regeneration
   const handleRegeneratePlan = async () => {
     try {
-      const res = await fetch(`/api/v1/learners/${learnerId}/plan`, {
-        method: 'POST',
-      });
+      const res = await fetch(`/api/v1/learners/${learnerId}/today-plan`);
       if (res.ok) {
-        const data = await res.json();
-        setLearnerState(data.state);
-        setNextAction(data.nextAction);
+        const plan = await res.json();
+        setLearnerState((current) => current && (plan.stateVersion ?? 0) >= (current.stateVersion ?? 0)
+          ? { ...current, activePlan: plan, stateVersion: plan.stateVersion }
+          : current);
       }
     } catch (err) {
       console.error('Failed to regenerate plan:', err);
@@ -82,13 +95,13 @@ export function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setLearnerState(data.state);
+        acceptLearnerState(data.state);
         setNextAction(data.nextAction);
         // Immediately regenerate plan to adapt to new target domain / interests
         const planRes = await fetch(`/api/v1/learners/${learnerId}/plan`, { method: 'POST' });
         if (planRes.ok) {
           const planData = await planRes.json();
-          setLearnerState(planData.state);
+          acceptLearnerState(planData.state);
           setNextAction(planData.nextAction);
         }
       }
@@ -111,7 +124,7 @@ export function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setLearnerState(data.state);
+        acceptLearnerState(data.state);
         setOverallProgress(data.overallProgress);
         setNextAction(data.nextAction);
         return data.gradingResult;
@@ -132,7 +145,7 @@ export function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        setLearnerState(data.state);
+        acceptLearnerState(data.state);
         setOverallProgress(data.overallProgress);
         setNextAction(data.nextAction);
       }
@@ -198,17 +211,6 @@ export function App() {
               }}
               onUpdateGoal={handleUpdateGoal}
               onRegeneratePlan={handleRegeneratePlan}
-              onRecordCheckIn={(success) => {
-                if (learnerState) {
-                  const delta = success ? 0.04 : -0.02;
-                  const newProgress = Math.max(0, Math.min(1, overallProgress + delta));
-                  setOverallProgress(newProgress);
-                  setLearnerState({
-                    ...learnerState,
-                    todayCheckedIn: true,
-                  });
-                }
-              }}
             />
           )}
 
