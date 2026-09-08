@@ -644,9 +644,11 @@ def render_coach(repository: Repository, learner_id: str) -> None:
         repository.save_coach_message(learner_id, "user", prompt)
         lower = prompt.lower()
         fallback = "很好！先说短句就可以。试试：我叫……。然后问：你呢？" if "name" in lower or "名字" in prompt else "Almost there. 中文先说人，再说动作：我想喝茶。再试一次。"
+        context = "\n".join(f"{role}: {message}" for role, message in messages[-8:])
         response = generate_ai_response(
             "You are a warm beginner Chinese coach. Answer in no more than two short sentences. "
-            "Use simple Chinese with an English explanation when useful. Learner message: " + prompt,
+            "Use simple Chinese with an English explanation when useful. Keep continuity with this recent conversation:\n"
+            + context + "\nLearner message: " + prompt,
             fallback,
         )
         repository.save_coach_message(learner_id, "assistant", response); st.rerun()
