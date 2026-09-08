@@ -266,6 +266,7 @@ class Repository:
         CREATE TABLE IF NOT EXISTS error_profile (learner_id TEXT NOT NULL, concept_id TEXT NOT NULL, error_code TEXT NOT NULL, occurrences INTEGER NOT NULL DEFAULT 0, last_seen TEXT NOT NULL, PRIMARY KEY (learner_id, concept_id, error_code));
         CREATE TABLE IF NOT EXISTS learning_unit (unit_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS daily_goal_blueprint (blueprint_id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS coach_message (message_id INTEGER PRIMARY KEY AUTOINCREMENT, learner_id TEXT NOT NULL, role TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL);
         """)
         self.db.executemany("INSERT OR IGNORE INTO learning_unit VALUES (?,?)", [(unit.id, unit.title) for unit in UNITS])
         self.db.executemany("INSERT OR IGNORE INTO daily_goal_blueprint VALUES (?,?)", [(blueprint.id, blueprint.outcome) for blueprint in BLUEPRINTS])
@@ -305,6 +306,14 @@ class Repository:
 
     def errors(self, learner_id: str) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM error_profile WHERE learner_id=? ORDER BY occurrences DESC, last_seen ASC", (learner_id,)).fetchall()
+
+    def coach_history(self, learner_id: str) -> list[tuple[str, str]]:
+        rows = self.db.execute("SELECT role, message FROM coach_message WHERE learner_id=? ORDER BY message_id", (learner_id,)).fetchall()
+        return [(str(row["role"]), str(row["message"])) for row in rows]
+
+    def save_coach_message(self, learner_id: str, role: str, message: str) -> None:
+        self.db.execute("INSERT INTO coach_message (learner_id, role, message, created_at) VALUES (?,?,?,?)", (learner_id, role, message, datetime.utcnow().isoformat(timespec="seconds")))
+        self.db.commit()
 
 
 def retention(row: sqlite3.Row | None) -> float:
@@ -531,17 +540,20 @@ def render_dialogue(repository: Repository, learner_id: str) -> None:
         (st.success if passed else st.warning)(f"{feedback} State version: {version}")
 
 
-def render_coach() -> None:
+def render_coach(repository: Repository, learner_id: str) -> None:
     st.markdown("<div class='page-kicker'>COACH BAOBAO</div>", unsafe_allow_html=True)
     st.title("Coach")
     st.caption("Short feedback: one correction, one reason, one retry.")
-    if "coach_messages" not in st.session_state:
-        st.session_state["coach_messages"] = [("assistant", "你好！今天我们练一句短短的中文。你想先练发音还是自我介绍？")]
-    for role, message in st.session_state["coach_messages"]:
+    messages = repository.coach_history(learner_id)
+    if not messages:
+        greeting = "你好！今天我们练一句短短的中文。你想先练发音还是自我介绍？"
+        repository.save_coach_message(learner_id, "assistant", greeting)
+        messages = [("assistant", greeting)]
+    for role, message in messages:
         with st.chat_message(role): st.write(message)
     prompt = st.chat_input("Ask your Chinese coach")
     if prompt:
-        st.session_state["coach_messages"].append(("user", prompt))
+        repository.save_coach_message(learner_id, "user", prompt)
         lower = prompt.lower()
         fallback = "很好！先说短句就可以。试试：我叫……。然后问：你呢？" if "name" in lower or "名字" in prompt else "Almost there. 中文先说人，再说动作：我想喝茶。再试一次。"
         response = generate_ai_response(
@@ -549,7 +561,7 @@ def render_coach() -> None:
             "Use simple Chinese with an English explanation when useful. Learner message: " + prompt,
             fallback,
         )
-        st.session_state["coach_messages"].append(("assistant", response)); st.rerun()
+        repository.save_coach_message(learner_id, "assistant", response); st.rerun()
 
 
 def render_retention(repository: Repository, learner_id: str) -> None:
@@ -611,9 +623,16 @@ def main() -> None:
     .hero-title { font-size:34px; font-weight:900; margin:10px 0 4px; } .hero-subtitle { font-size:17px; color:#d1fae5; } .hero-outcome { margin-top:22px; background:#ffffff18; border:1px solid #ffffff2a; border-radius:15px; padding:14px 16px; font-size:15px; }
     .section-label { color:#047857; margin:26px 0 10px; } .task-row { display:flex; gap:15px; align-items:center; min-height:58px; } .task-icon { width:42px;height:42px;border-radius:14px;background:#ecfdf5;color:#047857;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800; } .task-kind { color:#059669;font-size:10px;font-weight:800;letter-spacing:.1em; } .task-title { font-size:17px;font-weight:800;margin:3px 0; } .task-caption,.concept-en { color:#71717a;font-size:12px; } .module-header { margin-top:26px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--line);padding:0 2px 10px;font-size:19px;font-weight:800; } .module-header small { color:#71717a;font-size:11px;font-weight:500; } .concept-card { background:white;border:1px solid var(--line);border-radius:18px;padding:16px;margin:8px 0;min-height:122px;box-shadow:0 3px 10px #00000008; } .concept-number { color:#a1a1aa;font-size:10px;font-weight:800;letter-spacing:.1em; } .concept-title { font-size:15px;font-weight:800;margin:7px 0 2px; } .bar { height:5px;background:#f4f4f5;border-radius:9px;margin:14px 0 8px;overflow:hidden; } .bar span { display:block;height:100%;background:#10b981;border-radius:9px; } .concept-meta { color:#059669;font-size:10px;font-weight:700;display:flex;justify-content:space-between; } .stButton>button { border-radius:12px;font-weight:700;border:1px solid #d4d4d8; } .stButton>button[kind='primary'] { background:#10b981;color:#052e16;border:0; }
     </style>""", unsafe_allow_html=True)
-    repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
+    repository = Repository()
+    requested_learner = str(st.query_params.get("learner", "streamlit_learner")).strip()
+    learner_id = re.sub(r"[^a-zA-Z0-9_-]", "", requested_learner)[:48] or "streamlit_learner"
+    learner = repository.ensure(learner_id)
     with st.sidebar:
-        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Teaching Cards", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.title("🎯 GoalCoach"); st.caption(f"Learner: {learner_id}")
+        page = st.radio("Navigate", ["Today", "Learn", "Practice", "Teaching Cards", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Knowledge Tree", "Goal Presets", "Retention", "Progress", "Profile"])
+        name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.caption("Shareable learner profile")
+        st.code(f"?learner={learner_id}", language="text")
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
     if page == "Today": render_today(repository, learner_id)
     elif page == "Learn": render_learn(repository, learner_id)
@@ -622,7 +641,7 @@ def main() -> None:
     elif page == "Pinyin Lab": render_pinyin(repository, learner_id)
     elif page == "Pinyin Chart": render_pinyin_chart()
     elif page == "Freeform": render_dialogue(repository, learner_id)
-    elif page == "Coach": render_coach()
+    elif page == "Coach": render_coach(repository, learner_id)
     elif page == "Curriculum": render_curriculum(repository, learner_id)
     elif page == "Knowledge Tree": render_knowledge_tree(repository, learner_id)
     elif page == "Goal Presets": render_goal_presets(repository, learner_id)
