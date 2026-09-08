@@ -258,6 +258,20 @@ def load_pinyin_cards() -> tuple[dict[str, str | int], ...]:
 
 ALL_PINYIN_CARDS = load_pinyin_cards()
 
+
+def validate_pinyin_quality(cards: Sequence[dict[str, str | int]]) -> tuple[str, ...]:
+    """Run deterministic checks required before a card can be considered production-ready."""
+    errors: list[str] = []
+    for card in cards:
+        card_id = str(card.get("id", "unknown"))
+        if not str(card.get("pinyin", "")).strip(): errors.append(f"{card_id}: missing pinyin")
+        if not str(card.get("hanzi", "")).strip() and not str(card.get("target", "")).strip(): errors.append(f"{card_id}: missing target")
+        if not str(card.get("meaning", "")).strip(): errors.append(f"{card_id}: missing beginner meaning")
+    return tuple(errors)
+
+
+PINYIN_QUALITY_ERRORS = validate_pinyin_quality(ALL_PINYIN_CARDS)
+
 EXERCISES = (
     ("hsk1_c01", "Translate: Hello!", "你好", "你好"),
     ("hsk1_c02", "Say: My name is Anna.", "我叫安娜", "我叫"),
@@ -313,6 +327,15 @@ def content_exercises() -> tuple[tuple[str, str, str, str], ...]:
 def content_exercise_rows() -> tuple[sqlite3.Row, ...]:
     """Return the complete curated exercise records, preserving their authored type and options."""
     if CONTENT_DATABASE is None:
+        return tuple()
+
+
+def content_curriculum_rows() -> tuple[sqlite3.Row, ...]:
+    if CONTENT_DATABASE is None:
+        return tuple()
+    try:
+        return tuple(CONTENT_DATABASE.execute("SELECT * FROM curriculum_concepts ORDER BY sequence_no").fetchall())
+    except sqlite3.Error:
         return tuple()
 
 
@@ -567,6 +590,15 @@ def render_curriculum(repository: Repository, learner_id: str) -> None:
             row = progress.get(concept.id); learned = int(row["learned"]) if row else 0; mastered = f"{int(row['mastery'] * 100)}%" if row and progress_status(row) == "mastered" else "—"
             with columns[index % 3]:
                 st.markdown(f"<div class='concept-card'><div class='concept-number'>{concept.sequence:02d}</div><div class='concept-title'>{concept.title}</div><div class='concept-en'>{concept.english}</div><div class='bar'><span style='width:{learned}%'></span></div><div class='concept-meta'><span>Learning {learned}%</span><span>Mastered {mastered}</span></div></div>", unsafe_allow_html=True)
+    authored = content_curriculum_rows()
+    if authored:
+        with st.expander(f"Authored curriculum catalog ({len(authored)} concepts)"):
+            for row in authored:
+                st.markdown(f"**{row['title_zh']}** · {row['title_en']}  \n{row['communicative_goal']}")
+    if PINYIN_QUALITY_ERRORS:
+        st.warning(f"Pinyin content audit: {len(PINYIN_QUALITY_ERRORS)} cards require review before production release.")
+    elif ALL_PINYIN_CARDS:
+        st.success(f"Pinyin content audit passed for {len(ALL_PINYIN_CARDS)} parsed cards.")
 
 
 def render_learn(repository: Repository, learner_id: str) -> None:
