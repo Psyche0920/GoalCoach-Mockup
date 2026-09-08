@@ -283,6 +283,73 @@ def render_profile(repository: Repository, learner_id: str) -> None:
             repository.save_profile(learner_id, name, minutes, interests); st.success("Profile saved. Your curriculum order remains unchanged; only examples and scenes adapt.")
 
 
+def render_pinyin_chart() -> None:
+    st.markdown("<div class='page-kicker'>SOUND MAP</div>", unsafe_allow_html=True)
+    st.title("Interactive Pinyin Chart")
+    st.caption("Select a syllable to inspect its initial, final and tone target.")
+    initials = ["b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "zh", "ch", "sh", "r", "z", "c", "s"]
+    finals = ["a", "o", "e", "i", "u", "ü", "ai", "ei", "ao", "ou", "an", "en", "ang", "eng"]
+    initial = st.selectbox("Initial", initials)
+    final = st.selectbox("Final", finals)
+    tone = st.radio("Tone", ["1 · mā", "2 · má", "3 · mǎ", "4 · mà", "neutral"], horizontal=True)
+    tone_mark = {"1 · mā": "ā", "2 · má": "á", "3 · mǎ": "ǎ", "4 · mà": "à", "neutral": "a"}[tone]
+    syllable = initial + final
+    st.markdown(f"<div class='hero'><div class='hero-kicker'>SELECTED SYLLABLE</div><div class='hero-title'>{initial}{tone_mark if final == 'a' else final}</div><div class='hero-subtitle'>Target: {syllable} · {tone}</div><div class='hero-outcome'>Listen, repeat twice, then use it in a real HSK1 word.</div></div>", unsafe_allow_html=True)
+    grid = st.columns(7)
+    for index, ending in enumerate(finals):
+        with grid[index % 7]:
+            st.button(f"{initial}{ending}", key=f"chart_{initial}_{ending}")
+
+
+def render_dialogue(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>FREEFORM GOAL CHECK</div>", unsafe_allow_html=True)
+    st.title("Guided Freeform")
+    st.caption("A two-turn scenario checks whether you can use today's language in context.")
+    st.info("Context: You meet a new classmate. They say: 你好！")
+    st.write("Choose a natural reply, then ask one question back.")
+    choices = ["你好！我叫 Anna。你呢？", "你好！我是学生。你是学生吗？", "谢谢，再见。"]
+    answer = st.radio("Your reply", choices)
+    if st.button("Submit goal check", type="primary"):
+        passed = answer != choices[-1]
+        unit = UNITS_BY_ID["unit_hsk1_c24"]
+        item = PlanItem("freeform_dialogue", "free_play", ("hsk1_c24",), (unit.id,), "Two-turn introduction", 4)
+        version = repository.record(learner_id, item, "output", 1.0 if passed else .3, 240, 1.0 if passed else .75)
+        if passed: st.success(f"Goal achieved. You completed two connected turns. State version: {version}")
+        else: st.warning("Almost there. Keep the conversation connected and ask a question back.")
+
+
+def render_coach() -> None:
+    st.markdown("<div class='page-kicker'>COACH BAOBAO</div>", unsafe_allow_html=True)
+    st.title("Coach")
+    st.caption("Short feedback: one correction, one reason, one retry.")
+    if "coach_messages" not in st.session_state:
+        st.session_state["coach_messages"] = [("assistant", "你好！今天我们练一句短短的中文。你想先练发音还是自我介绍？")]
+    for role, message in st.session_state["coach_messages"]:
+        with st.chat_message(role): st.write(message)
+    prompt = st.chat_input("Ask your Chinese coach")
+    if prompt:
+        st.session_state["coach_messages"].append(("user", prompt))
+        lower = prompt.lower()
+        response = "很好！先说短句就可以。试试：我叫……。然后问：你呢？" if "name" in lower or "名字" in prompt else "Almost there. 中文先说人，再说动作：我想喝茶。再试一次。"
+        st.session_state["coach_messages"].append(("assistant", response)); st.rerun()
+
+
+def render_retention(repository: Repository, learner_id: str) -> None:
+    st.markdown("<div class='page-kicker'>MEMORY HEALTH</div>", unsafe_allow_html=True)
+    st.title("Retention Dashboard")
+    rows = repository.progress(learner_id)
+    st.caption("Current readiness may decline with time; learned course coverage is never erased.")
+    chart_rows = []
+    for concept in CONCEPTS:
+        row = rows.get(concept.id)
+        chart_rows.append({"Concept": concept.title, "Learned": float(row["learned"]) if row else 0, "Readiness": round(float(row["mastery"]) * retention(row) * 100, 1) if row else 0})
+    if chart_rows:
+        st.bar_chart(chart_rows, x="Concept", y=["Learned", "Readiness"])
+    due = [concept.title for concept in CONCEPTS if rows.get(concept.id) and rows[concept.id]["next_review"] and rows[concept.id]["next_review"][:10] <= date.today().isoformat()]
+    if due: st.warning(f"Review due: {', '.join(due[:8])}")
+    else: st.success("No urgent reviews due.")
+
+
 def main() -> None:
     st.set_page_config(page_title="GoalCoach", page_icon="🎯", layout="wide")
     st.markdown("""<style>
@@ -298,13 +365,17 @@ def main() -> None:
     </style>""", unsafe_allow_html=True)
     repository = Repository(); learner_id = "streamlit_learner"; learner = repository.ensure(learner_id)
     with st.sidebar:
-        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Curriculum", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
+        st.title("GoalCoach"); st.caption("Systematic HSK1 Chinese learning"); page = st.radio("Navigate", ["Today", "Learn", "Practice", "Pinyin Lab", "Pinyin Chart", "Freeform", "Coach", "Curriculum", "Retention", "Progress", "Profile"]); name = st.text_input("Learner", learner["name"]); minutes = st.number_input("Daily minutes", 5, 120, learner["minutes"], 5); interests = st.multiselect("Interest skin", sorted({concept.theme for concept in CONCEPTS}), default=list(filter(None, learner["interests"].split(","))))
         if st.button("Save profile"): repository.save_profile(learner_id, name, int(minutes), interests); st.success("Profile saved")
     if page == "Today": render_today(repository, learner_id)
     elif page == "Learn": render_learn(repository, learner_id)
     elif page == "Practice": render_practice(repository, learner_id)
     elif page == "Pinyin Lab": render_pinyin(repository, learner_id)
+    elif page == "Pinyin Chart": render_pinyin_chart()
+    elif page == "Freeform": render_dialogue(repository, learner_id)
+    elif page == "Coach": render_coach()
     elif page == "Curriculum": render_curriculum(repository, learner_id)
+    elif page == "Retention": render_retention(repository, learner_id)
     elif page == "Profile": render_profile(repository, learner_id)
     else:
         rows = repository.progress(learner_id); coverage = sum(float(row["learned"]) > 0 for row in rows.values()) / len(CONCEPTS); readiness = sum(float(row["mastery"]) * retention(row) for row in rows.values()) / len(CONCEPTS); st.title("Progress"); first, second = st.columns(2); first.metric("Course coverage", f"{coverage:.0%}"); second.metric("Current readiness", f"{readiness:.0%}"); st.caption("Readiness can decay with time; course coverage does not.")
