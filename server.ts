@@ -12,14 +12,23 @@ import { DAILY_GOAL_BLUEPRINTS, LEARNING_UNITS, SYSTEM_CURRICULUM_CONCEPTS } fro
 import { CurriculumCoverageValidator } from './src/domain/curriculumValidator.ts';
 import { DAILY_PLANNER_VERSION, deriveDailyPlanStatus, generateDailyPlan } from './src/domain/planner.ts';
 import { SqliteLearnerRepository } from './src/infrastructure/sqliteLearnerRepository.ts';
-import { deriveStatus, normalizeUnitScore, projectProgress } from './src/domain/progress.ts';
+import {
+  deriveStatus,
+  normalizeUnitScore,
+  projectProgress,
+  isConceptLearned,
+  isConceptMastered,
+  calculateModuleLearnedPercent,
+  calculateModuleMasteredPercent,
+} from './src/domain/progress.ts';
+import { reduceConceptProgress, createDefaultConceptProgress } from './src/domain/conceptProgressReducer.ts';
 import { applyLearningEvidence, completeLearningUnit, LEARNING_COMPLETION_VERSION } from './src/domain/learningCompletion.ts';
 import { gradeFreeformAssessment } from './src/domain/freeformAssessment.ts';
 
 const HSK1_CONCEPTS = SYSTEM_CURRICULUM_CONCEPTS;
 const RETENTION_MODEL_VERSION = 2;
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = 3000;
 const app = express();
 
 app.use(cors());
@@ -317,18 +326,35 @@ function getGoalScopeProgress(state: LearnerState): Record<string, ConceptProgre
 }
 
 function createProjections(state: LearnerState, events: readonly LearningEvent[] = []) {
-  const progress = Object.values(getGoalScopeProgress(state));
+  const allProgress = getConceptProgress(state);
+  const progressList = Object.values(allProgress);
   const weights = Object.fromEntries(HSK1_CONCEPTS.map((concept) => [concept.conceptId, concept.weight ?? 1]));
-  const progressSummary = projectProgress(progress, weights, events, new Date().toISOString(), state.stateVersion ?? 1);
+  const progressSummary = projectProgress(
+    progressList,
+    weights,
+    events,
+    new Date().toISOString(),
+    state.stateVersion ?? 1,
+    {
+      allScopeConcepts: HSK1_CONCEPTS,
+      blueprints: DAILY_GOAL_BLUEPRINTS,
+      passedBlueprintIds: state.passedBlueprintIds ?? [],
+    },
+  );
   const curriculumTree = {
     stateVersion: state.stateVersion ?? 1,
-    modules: ['module1_pinyin', 'module2_grammar', 'module3_thematic'].map((moduleId) => ({
-      moduleId,
-      concepts: HSK1_CONCEPTS.filter((concept) => concept.module === moduleId || concept.moduleId === moduleId).map((concept) => ({
-        ...concept,
-        progress: state.conceptProgress?.[concept.conceptId],
-      })),
-    })),
+    modules: ['module1_pinyin', 'module2_grammar', 'module3_thematic'].map((moduleId) => {
+      const moduleConcepts = HSK1_CONCEPTS.filter((concept) => concept.module === moduleId || concept.moduleId === moduleId);
+      return {
+        moduleId,
+        moduleLearnedPercent: calculateModuleLearnedPercent(moduleConcepts, allProgress),
+        moduleMasteredPercent: calculateModuleMasteredPercent(moduleConcepts, allProgress),
+        concepts: moduleConcepts.map((concept) => ({
+          ...concept,
+          progress: allProgress[concept.conceptId],
+        })),
+      };
+    }),
   };
   return { progressSummary, curriculumTree };
 }
@@ -676,7 +702,8 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
 
   const answerPlanItem = state.activePlan?.items.find((candidate) =>
     (candidate.conceptIds ?? (candidate.conceptId ? [candidate.conceptId] : [])).includes(conceptId));
-  const isSpacedReview = answerPlanItem?.kind === 'review';
+  const currentConceptProgress = getConceptProgress(state)[conceptId];
+  const isSpacedReview = answerPlanItem?.kind === 'review' || (currentConceptProgress?.learnedPercent ?? 0) >= 100;
 
   // Mark item completed in activePlan if applicable, or add spontaneous curriculum learning
   if (state.activePlan) {
@@ -724,59 +751,11 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
 
   const evidenceAt = new Date().toISOString();
   const progressRows = getConceptProgress(state);
-  const currentProgress = progressRows[conceptId];
-  const completesAtomicUnit = answerPlanItem?.kind === 'new'
-    && Boolean(answerPlanItem.unitIds?.length)
-    && gradingResult.passedGates;
-  const learningCompletion = completesAtomicUnit
-    ? completeLearningUnit(currentProgress)
-    : applyLearningEvidence(currentProgress, { practiceCompletion: isSpacedReview ? 0 : 1 });
-  const learnedPercent = learningCompletion.learnedPercent;
-  const evidenceDays = currentProgress.lastReviewedAt?.slice(0, 10) === evidenceAt.slice(0, 10)
-    ? currentProgress.evidenceDays : currentProgress.evidenceDays + 1;
-  const successfulReview = isSpacedReview && gradingResult.passedGates
-    && (!currentProgress.nextReviewAt || currentProgress.nextReviewAt <= evidenceAt)
-    && (!currentProgress.lastReviewedAt || currentProgress.lastReviewedAt.slice(0, 10) !== evidenceAt.slice(0, 10));
-  const successfulSpacedRetrievals = currentProgress.successfulSpacedRetrievals + (successfulReview ? 1 : 0);
-  const quality = gradingResult.passedGates ? 1 : 0.75;
-  const qualityEvidenceCount = currentProgress.qualityEvidenceCount
-    ?? (currentProgress.averageQuality > 0 ? Math.max(1, currentProgress.evidenceDays) : 0);
-  const refreshesRetention = isSpacedReview || completesAtomicUnit || gradingResult.passedGates;
-  const updatedProgress: ConceptProgress = {
-    ...currentProgress,
-    ...learningCompletion,
-    learnedPercent,
-    masteryScore: isSpacedReview
-      ? Math.min(1, currentProgress.masteryScore + (successfulReview ? 0.15 : 0))
-      : Math.max(currentProgress.masteryScore, Math.min(0.35, 0.35 * (learnedPercent / 100) * quality)),
-    retentionAtReview: refreshesRetention
-      ? (isSpacedReview
-        ? gradingResult.passedGates
-          ? quality
-          : Math.max(0.3, currentProgress.retentionAtReview - 0.2)
-        : Math.max(currentProgress.retentionAtReview, quality))
-      : currentProgress.retentionAtReview,
-    retentionModelVersion: RETENTION_MODEL_VERSION,
-    successfulSpacedRetrievals,
-    evidenceDays,
-    averageQuality: ((currentProgress.averageQuality * qualityEvidenceCount) + quality) / (qualityEvidenceCount + 1),
-    qualityEvidenceCount: qualityEvidenceCount + 1,
-    lastReviewedAt: refreshesRetention ? evidenceAt : currentProgress.lastReviewedAt,
-    nextReviewAt: refreshesRetention
-      ? new Date(Date.now() + Math.max(1, successfulSpacedRetrievals * 2) * 86_400_000).toISOString()
-      : currentProgress.nextReviewAt,
-  };
-  updatedProgress.status = deriveStatus(updatedProgress);
-  if (updatedProgress.status === 'mastered') updatedProgress.masteryScore = 1;
-  progressRows[conceptId] = updatedProgress;
-  state.updatedAt = evidenceAt;
-  state.stateVersion = (state.stateVersion ?? 0) + 1;
-  if (state.activePlan) {
-    state.activePlan.stateVersion = state.stateVersion;
-    state.activePlan.status = deriveDailyPlanStatus(state.activePlan);
-  }
+  const currentProgress = progressRows[conceptId] ?? createDefaultConceptProgress(conceptId, learnerId);
+  const completesAtomicUnit = !isSpacedReview && gradingResult.passedGates;
+
   const answerEvent: LearningEvent = {
-    id: `event_answer_${Date.now()}`,
+    id: `event_answer_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     learnerId,
     planItemId: answerPlanItem?.id ?? `practice_${conceptId}`,
     conceptIds: [conceptId],
@@ -789,6 +768,18 @@ app.post('/api/v1/answers', (req: Request, res: Response) => {
     gradingResult,
     createdAt: evidenceAt,
   };
+
+  const updatedProgress = reduceConceptProgress(currentProgress, answerEvent, {
+    isSpacedReview,
+    completesAtomicUnit,
+  });
+  progressRows[conceptId] = updatedProgress;
+  state.updatedAt = evidenceAt;
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  if (state.activePlan) {
+    state.activePlan.stateVersion = state.stateVersion;
+    state.activePlan.status = deriveDailyPlanStatus(state.activePlan);
+  }
   learnerRepository.appendEventAndProgress(answerEvent, [updatedProgress], state);
   const answerProjections = createProjections(state, [answerEvent]);
 
@@ -825,7 +816,8 @@ app.post('/api/v1/learners/:learner_id/complete-concept', (req: Request, res: Re
 
   const normalizedScore = Math.max(0, Math.min(1, Number(score) > 1 ? Number(score) / 100 : Number(score)));
   const passedUnit = normalizedScore >= 0.6;
-  const isSpacedReview = mode === 'review';
+  const currentConceptProgress = getConceptProgress(state)[conceptId];
+  const isSpacedReview = mode === 'review' || (currentConceptProgress?.learnedPercent ?? 0) >= 100;
   const earnedMastery = Math.max(normalizeUnitScore(existingMastery.masteryScore), Math.min(0.35, normalizedScore * 0.35));
   state.mastery[conceptId] = {
     ...existingMastery,
@@ -879,55 +871,10 @@ app.post('/api/v1/learners/:learner_id/complete-concept', (req: Request, res: Re
 
   const completedAt = new Date().toISOString();
   const progressRows = getConceptProgress(state);
-  const currentProgress = progressRows[conceptId];
-  const learningCompletion = !isSpacedReview && passedUnit
-    ? completeLearningUnit(currentProgress)
-    : applyLearningEvidence(currentProgress, isSpacedReview ? {} : {
-      cardCompletion: 1,
-      practiceCompletion: 1,
-    });
-  const successfulReview = isSpacedReview && normalizedScore >= 0.8
-    && (!currentProgress.nextReviewAt || currentProgress.nextReviewAt <= completedAt)
-    && (!currentProgress.lastReviewedAt || currentProgress.lastReviewedAt.slice(0, 10) !== completedAt.slice(0, 10));
-  const successfulSpacedRetrievals = currentProgress.successfulSpacedRetrievals + (successfulReview ? 1 : 0);
-  const qualityEvidenceCount = currentProgress.qualityEvidenceCount
-    ?? (currentProgress.averageQuality > 0 ? Math.max(1, currentProgress.evidenceDays) : 0);
-  const refreshesRetention = isSpacedReview || passedUnit;
-  const updatedProgress: ConceptProgress = {
-    ...currentProgress,
-    ...learningCompletion,
-    masteryScore: isSpacedReview
-      ? Math.min(1, currentProgress.masteryScore + (successfulReview ? 0.15 : 0))
-      : Math.max(currentProgress.masteryScore, earnedMastery),
-    retentionAtReview: refreshesRetention
-      ? (isSpacedReview
-        ? normalizedScore >= 0.8
-          ? normalizedScore
-          : Math.max(0.3, currentProgress.retentionAtReview - 0.2)
-        : Math.max(currentProgress.retentionAtReview, normalizedScore))
-      : currentProgress.retentionAtReview,
-    retentionModelVersion: RETENTION_MODEL_VERSION,
-    successfulSpacedRetrievals,
-    evidenceDays: currentProgress.lastReviewedAt?.slice(0, 10) === completedAt.slice(0, 10) ? currentProgress.evidenceDays : currentProgress.evidenceDays + 1,
-    averageQuality: ((currentProgress.averageQuality * qualityEvidenceCount) + normalizedScore) / (qualityEvidenceCount + 1),
-    qualityEvidenceCount: qualityEvidenceCount + 1,
-    lastReviewedAt: refreshesRetention ? completedAt : currentProgress.lastReviewedAt,
-    nextReviewAt: refreshesRetention
-      ? new Date(Date.now() + Math.max(1, successfulSpacedRetrievals * 2) * 86_400_000).toISOString()
-      : currentProgress.nextReviewAt,
-  };
-  updatedProgress.status = deriveStatus(updatedProgress);
-  if (updatedProgress.status === 'mastered') updatedProgress.masteryScore = 1;
-  progressRows[conceptId] = updatedProgress;
-  state.updatedAt = completedAt;
-  state.stateVersion = (state.stateVersion ?? 0) + 1;
-  if (state.activePlan) {
-    state.activePlan.stateVersion = state.stateVersion;
-    state.activePlan.status = deriveDailyPlanStatus(state.activePlan);
-  }
+  const currentProgress = progressRows[conceptId] ?? createDefaultConceptProgress(conceptId, learnerId);
   const completedItem = state.activePlan?.items.find((candidate) => (candidate.conceptIds ?? [candidate.conceptId]).includes(conceptId));
   const completionEvent: LearningEvent = {
-    id: `event_pinyin_${Date.now()}`,
+    id: `event_pinyin_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     learnerId,
     planItemId: completedItem?.id ?? `pinyin_${conceptId}`,
     conceptIds: [conceptId],
@@ -937,8 +884,32 @@ app.post('/api/v1/learners/:learner_id/complete-concept', (req: Request, res: Re
     activeSeconds: Math.round((completedItem?.estimatedMinutes ?? 1) * 60),
     estimatedMinutes: completedItem?.estimatedMinutes ?? 1,
     engagementScore: normalizedScore >= 0.75 ? 1 : 0.75,
+    gradingResult: {
+      exerciseId: `pinyin_${conceptId}`,
+      passedGates: passedUnit,
+      confidence: 1,
+      feedback: 'Pinyin lesson completed',
+      scores: {
+        grammaticalCorrectness: normalizedScore,
+        semanticPrecision: normalizedScore,
+        pragmaticAppropriateness: normalizedScore,
+      },
+      detectedErrors: [],
+      graderVersion: 'pinyin-v1',
+    },
     createdAt: completedAt,
   };
+  const updatedProgress = reduceConceptProgress(currentProgress, completionEvent, {
+    isSpacedReview,
+    completesAtomicUnit: !isSpacedReview && passedUnit,
+  });
+  progressRows[conceptId] = updatedProgress;
+  state.updatedAt = completedAt;
+  state.stateVersion = (state.stateVersion ?? 0) + 1;
+  if (state.activePlan) {
+    state.activePlan.stateVersion = state.stateVersion;
+    state.activePlan.status = deriveDailyPlanStatus(state.activePlan);
+  }
   learnerRepository.appendEventAndProgress(completionEvent, [updatedProgress], state);
   const completionProjections = createProjections(state, [completionEvent]);
 
@@ -995,12 +966,27 @@ app.get('/api/v1/learners/:learnerId/curriculum-tree', (req: Request, res: Respo
 });
 
 app.post('/api/v1/learning-events', (req: Request, res: Response) => {
-  const body = req.body as Partial<LearningEvent> & { learnerId?: string };
+  const body = req.body as Partial<LearningEvent> & { learnerId?: string; eventId?: string };
   if (!body.learnerId || !body.planItemId || !body.eventType || !Array.isArray(body.conceptIds)) {
     res.status(400).json({ error: 'learnerId, planItemId, eventType and conceptIds are required' });
     return;
   }
   const state = getOrCreateLearner(body.learnerId);
+
+  // Idempotency: Replaying the same event ID does not duplicate progress
+  const incomingId = body.id || body.eventId;
+  if (incomingId && learnerRepository.hasEvent(incomingId)) {
+    const projections = createProjections(state);
+    res.json({
+      stateVersion: state.stateVersion ?? 1,
+      plan: state.activePlan,
+      affectedConcepts: body.conceptIds.map((id) => state.conceptProgress?.[id]).filter(Boolean),
+      progressSummary: projections.progressSummary,
+      curriculumTree: projections.curriculumTree,
+    });
+    return;
+  }
+
   const item = state.activePlan?.items.find((candidate) => candidate.id === body.planItemId);
   if (!item) {
     res.status(404).json({ error: 'Plan item not found' });
@@ -1021,7 +1007,7 @@ app.post('/api/v1/learning-events', (req: Request, res: Response) => {
   const lastActiveAt = body.lastActiveAt ?? now;
   const elapsedSeconds = Math.max(0, (Date.parse(lastActiveAt) - Date.parse(startedAt)) / 1000);
   const event: LearningEvent = {
-    id: body.id ?? `event_${Date.now()}`,
+    id: incomingId ?? `event_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     learnerId: state.learnerId,
     planItemId: item.id,
     conceptIds: body.conceptIds,
@@ -1042,54 +1028,14 @@ app.post('/api/v1/learning-events', (req: Request, res: Response) => {
     && quality >= (rule.minimumQuality ?? 0)
     && (rule.evidenceType !== 'output' || event.gradingResult?.passedGates === true)
     && learnerRepository.countEventsForPlanItem(item.id, rule.evidenceType === 'output' ? 'output' : rule.evidenceType === 'retrieval' ? 'review' : undefined) + 1 >= rule.requiredCount);
-  const completesNewUnit = rulesPassed && item.kind === 'new' && Boolean(item.unitIds?.length);
-  const passedOutput = event.eventType === 'output' && event.gradingResult?.passedGates === true;
+  const completesNewUnit = item.kind === 'new';
   const progress = getConceptProgress(state);
   const affected = body.conceptIds.map((conceptId) => {
-    const current = progress[conceptId];
-    const learningCompletion = applyLearningEvidence(current, {
-      cardCompletion: event.eventType === 'card' || event.eventType === 'audio' ? 1 : 0,
-      practiceCompletion: event.eventType === 'attempt' ? 1 : 0,
-      outputCompletion: event.eventType === 'output' && event.gradingResult?.passedGates ? 1 : 0,
+    const current = progress[conceptId] ?? createDefaultConceptProgress(conceptId, state.learnerId);
+    const updated = reduceConceptProgress(current, event, {
+      isSpacedReview: event.eventType === 'review',
+      completesAtomicUnit: completesNewUnit,
     });
-    const learnedPercent = learningCompletion.learnedPercent;
-    const successfulReview = event.eventType === 'review' && quality >= 0.8
-      && (!event.gradingResult || event.gradingResult.passedGates)
-      && (!current.nextReviewAt || current.nextReviewAt <= now)
-      && (!current.lastReviewedAt || current.lastReviewedAt.slice(0, 10) !== now.slice(0, 10));
-    const failedReview = event.eventType === 'review'
-      && (quality < 0.8 || event.gradingResult?.passedGates === false);
-    const refreshesRetention = successfulReview || failedReview || completesNewUnit || passedOutput;
-    const evidenceDays = current.lastReviewedAt?.slice(0, 10) === now.slice(0, 10) ? current.evidenceDays : current.evidenceDays + 1;
-    const evidenceCount = current.successfulSpacedRetrievals + (successfulReview ? 1 : 0);
-    const qualityEvidenceCount = current.qualityEvidenceCount
-      ?? (current.averageQuality > 0 ? Math.max(1, current.evidenceDays) : 0);
-    const updated: ConceptProgress = {
-      ...current,
-      ...learningCompletion,
-      learnedPercent: Math.min(100, learnedPercent),
-      masteryScore: event.eventType === 'review'
-        ? Math.min(1, current.masteryScore + (successfulReview ? 0.15 : 0))
-        : Math.max(current.masteryScore, Math.min(0.35, 0.35 * (learnedPercent / 100) * quality)),
-      retentionAtReview: successfulReview
-        ? quality
-        : failedReview
-          ? Math.max(0.3, current.retentionAtReview - 0.2)
-          : refreshesRetention
-            ? Math.max(current.retentionAtReview, quality)
-            : current.retentionAtReview,
-      retentionModelVersion: RETENTION_MODEL_VERSION,
-      successfulSpacedRetrievals: evidenceCount,
-      evidenceDays,
-      averageQuality: ((current.averageQuality * qualityEvidenceCount) + quality) / (qualityEvidenceCount + 1),
-      qualityEvidenceCount: qualityEvidenceCount + 1,
-      lastReviewedAt: refreshesRetention ? now : current.lastReviewedAt,
-      nextReviewAt: refreshesRetention
-        ? new Date(Date.now() + Math.max(1, evidenceCount * 2) * 86_400_000).toISOString()
-        : current.nextReviewAt,
-    };
-    updated.status = deriveStatus(updated);
-    if (updated.status === 'mastered') updated.masteryScore = 1;
     progress[conceptId] = updated;
     return updated;
   });
@@ -1111,15 +1057,6 @@ app.post('/api/v1/learning-events', (req: Request, res: Response) => {
       });
     }
   }
-  if (completesNewUnit) {
-    for (const row of affected) {
-      Object.assign(row, completeLearningUnit(row));
-      row.masteryScore = Math.max(row.masteryScore, Math.min(0.35, 0.35 * quality));
-      row.status = deriveStatus(row);
-      if (row.status === 'mastered') row.masteryScore = 1;
-      progress[row.conceptId] = row;
-    }
-  }
   if (rulesPassed) {
     item.completed = true;
     item.completionCredit = 1;
@@ -1129,7 +1066,13 @@ app.post('/api/v1/learning-events', (req: Request, res: Response) => {
     state.activePlan.effectiveMinutes = Number(((state.activePlan.effectiveMinutes ?? 0)
       + Math.min(event.activeSeconds / 60, event.estimatedMinutes) * event.engagementScore).toFixed(2));
   }
-  if (item.kind === 'free_play' && rulesPassed && state.activePlan) state.activePlan.freeformCompleted = true;
+  if (item.kind === 'free_play' && rulesPassed) {
+    if (state.activePlan) state.activePlan.freeformCompleted = true;
+    const blueprintId = state.activePlan?.blueprintId;
+    if (blueprintId) {
+      state.passedBlueprintIds = Array.from(new Set([...(state.passedBlueprintIds ?? []), blueprintId]));
+    }
+  }
   if (state.activePlan && state.activePlan.items.every((candidate) => candidate.completed)) {
     state.activePlan.status = deriveDailyPlanStatus(state.activePlan);
     if (state.activePlan.status === 'completed') state.activePlan.completedAt = now;

@@ -245,6 +245,9 @@ export interface ConceptProgress {
   evidenceDays: number;
   averageQuality: number;
   qualityEvidenceCount?: number;
+  reviewQualityCount?: number;
+  averageReviewQuality?: number;
+  isMastered?: boolean;
   status: 'not_started' | 'learning' | 'almost_mastered' | 'mastered';
   lastReviewedAt?: string;
   nextReviewAt?: string;
@@ -271,6 +274,9 @@ export interface ProgressSummary {
   learnedProgress: number;
   masteredProgress: number;
   goalCompletion: number;
+  goalScopeLearnedPercent?: number;
+  goalScopeMasteredPercent?: number;
+  communicationOutcomePercent?: number;
   dailyEffectiveMinutes: number;
 }
 
@@ -362,4 +368,5 @@ export interface LearnerState {
   updatedAt: string;
   stateVersion?: number;
   conceptProgress?: Record<string, ConceptProgress>;
+  passedBlueprintIds?: string[];
 }

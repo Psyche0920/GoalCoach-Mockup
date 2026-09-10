@@ -51,10 +51,16 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
   const freeformItem = plan?.items.find((item) => item.kind === 'free_play');
   const allocation = useMemo(() => {
     if (!plan || !plan.estimatedMinutes) return [];
-    return (['review', 'remedial', 'new', 'free_play'] as const).map((kind) => {
-      const minutes = plan.items.filter((item) => item.kind === kind).reduce((sum, item) => sum + item.estimatedMinutes, 0);
-      return { kind, minutes, percent: Math.round((minutes / plan.estimatedMinutes!) * 100) };
-    }).filter((part) => part.minutes > 0);
+    const total = plan.estimatedMinutes;
+    const reviewMin = plan.items.filter((i) => i.kind === 'review').reduce((s, i) => s + i.estimatedMinutes, 0);
+    const fixMin = plan.items.filter((i) => i.kind === 'remedial').reduce((s, i) => s + i.estimatedMinutes, 0);
+    const learnMin = plan.items.filter((i) => i.kind === 'new' || i.kind === 'free_play').reduce((s, i) => s + i.estimatedMinutes, 0);
+
+    return [
+      { kind: 'review', label: 'Review', minutes: reviewMin, color: 'bg-amber-400', percent: Math.round((reviewMin / total) * 100) },
+      { kind: 'fix', label: 'Fix', minutes: fixMin, color: 'bg-rose-400', percent: Math.round((fixMin / total) * 100) },
+      { kind: 'learn', label: 'Learn', minutes: learnMin, color: 'bg-emerald-500', percent: Math.round((learnMin / total) * 100) },
+    ].filter((part) => part.minutes > 0);
   }, [plan]);
   const planSections = useMemo(() => {
     const items = plan?.items ?? [];
@@ -73,7 +79,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
 
   const launchItem = (itemId: string): void => {
     const item = plan?.items.find((candidate) => candidate.id === itemId);
-    if (!item || item.completed) return;
+    if (!item) return;
     if (item.kind === 'free_play') {
       setAnswer('');
       setFeedback(null);
@@ -82,7 +88,10 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
       return;
     }
     const conceptId = item.conceptIds?.[0] ?? item.conceptId;
-    if (conceptId) onStartStudy(conceptId, item.kind === 'review' || item.kind === 'remedial' ? item.kind : 'new');
+    if (conceptId) {
+      const isReview = item.completed || item.kind === 'review' || item.kind === 'remedial' || (learnerState?.conceptProgress?.[conceptId]?.learnedPercent ?? 0) >= 100;
+      onStartStudy(conceptId, isReview ? 'review' : 'new');
+    }
   };
 
   const submitFreeform = async (event: React.FormEvent): Promise<void> => {
@@ -171,18 +180,17 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
         <div className="mt-5 border-t border-zinc-100 pt-4">
           <div className="mb-2 flex items-center justify-between"><span className="text-xs font-black text-zinc-700">Time split</span><span className="text-xs text-zinc-400">{plan.estimatedMinutes} min</span></div>
           <div className="flex h-2.5 overflow-hidden rounded-full bg-zinc-100">
-            {allocation.map((part) => <span key={part.kind} className={part.kind === 'review' ? 'bg-amber-400' : part.kind === 'remedial' ? 'bg-rose-400' : part.kind === 'new' ? 'bg-sky-500' : 'bg-emerald-500'} style={{ width: `${part.percent}%` }} />)}
+            {allocation.map((part) => <span key={part.kind} className={part.color} style={{ width: `${part.percent}%` }} />)}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-            {allocation.map((part) => <span key={part.kind} className="text-xs font-bold text-zinc-600">{ITEM_VISUALS[part.kind].label} {part.minutes}m · {part.percent}%</span>)}
+            {allocation.map((part) => <span key={part.kind} className="text-xs font-bold text-zinc-600">{part.label} {part.minutes}m · {part.percent}%</span>)}
           </div>
         </div>
       </section>
 
-      {(plan.items.every((item) => item.kind === 'review') || (plan.budgetMinutes ?? 0) > (plan.estimatedMinutes ?? 0)) && (
+      {plan.items.every((item) => item.kind === 'review') && (
         <section className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs font-bold text-zinc-600">
-          <span>{plan.items.every((item) => item.kind === 'review') ? '↻ Review day' : '✓ Complete units only'}</span>
-          {(plan.budgetMinutes ?? 0) > (plan.estimatedMinutes ?? 0) && <span>{(plan.budgetMinutes ?? 0) - (plan.estimatedMinutes ?? 0)} min open</span>}
+          <span>↻ Review day</span>
         </section>
       )}
 
@@ -199,7 +207,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
               <div className="space-y-2">
                 {section.items.map((item) => {
                   const visual = ITEM_VISUALS[item.kind];
-                  return <button key={item.id} type="button" disabled={item.completed} onClick={() => launchItem(item.id)} className={`w-full flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm disabled:hover:translate-y-0 disabled:hover:shadow-none ${visual.card}`}>
+                  return <button key={item.id} type="button" onClick={() => launchItem(item.id)} className={`w-full flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm cursor-pointer ${visual.card}`}>
                     <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black ${item.completed ? 'bg-emerald-500 text-white' : visual.badge}`}>{item.completed ? <Check className="w-4 h-4" /> : visual.icon}</span>
                     <span className="flex-1 min-w-0">
                       <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-black ${visual.badge}`}>{section.id === 'learn' ? learningType(item) : visual.label}</span>

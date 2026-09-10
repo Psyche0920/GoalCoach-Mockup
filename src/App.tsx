@@ -141,8 +141,8 @@ export function App() {
     return null;
   };
 
-  // Handle completing pinyin interactive lesson with audio demonstration & practice
-  const handleCompletePinyinLesson = async (conceptId: string, score: number) => {
+  // Handle completing concept study with audio demonstration & practice
+  const handleCompleteConcept = async (conceptId: string, score: number = 100) => {
     try {
       const res = await fetch(`/api/v1/learners/${learnerId}/complete-concept`, {
         method: 'POST',
@@ -158,7 +158,7 @@ export function App() {
         setNextAction(data.nextAction);
       }
     } catch (err) {
-      console.error('Failed to complete pinyin concept:', err);
+      console.error('Failed to complete concept:', err);
     }
   };
 
@@ -239,11 +239,12 @@ export function App() {
               learnerState={learnerState}
               goal={learnerState?.goal || null}
               onStartStudy={(conceptId, isPinyin) => {
+                const p = learnerState?.conceptProgress?.[conceptId];
+                const isAlreadyLearned = (p?.learnedPercent ?? 0) >= 100;
+                setStudyMode(isAlreadyLearned ? 'review' : 'new');
                 if (isPinyin || conceptId.startsWith('hsk1_p')) {
-                  setStudyMode('new');
                   setSelectedPinyinConceptId(conceptId);
                 } else {
-                  setStudyMode('new');
                   setSelectedStudyConceptId(conceptId);
                 }
               }}
@@ -284,7 +285,7 @@ export function App() {
           conceptId={selectedPinyinConceptId}
           onClose={() => setSelectedPinyinConceptId(null)}
           onComplete={(score) => {
-            handleCompletePinyinLesson(selectedPinyinConceptId, score);
+            handleCompleteConcept(selectedPinyinConceptId, score);
           }}
           learnerState={learnerState}
           concepts={concepts}
@@ -300,6 +301,9 @@ export function App() {
           mode={studyMode}
           onClose={() => setSelectedStudyConceptId(null)}
           onSubmitAnswer={handleSubmitAnswer}
+          onCompleteConcept={(conceptId) => {
+            handleCompleteConcept(conceptId, 100);
+          }}
           onRecordMistake={(exerciseId) => {
             setTodayMistakes((prev) => Array.from(new Set([...prev, exerciseId])));
           }}

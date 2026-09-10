@@ -31,8 +31,8 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
   masteredProgress,
   onUpdateGoal,
 }) => {
-  const masteredPercent = Math.round(Math.max(0, Math.min(1, masteredProgress)) * 100);
-  const learnedPercent = Math.round(Math.max(0, Math.min(1, learnedProgress)) * 100);
+  const masteredPercent = Math.round(masteredProgress > 1 ? Math.min(100, masteredProgress) : Math.max(0, masteredProgress) * 100);
+  const learnedPercent = Math.round(learnedProgress > 1 ? Math.min(100, learnedProgress) : Math.max(0, learnedProgress) * 100);
   const [minutes, setMinutes] = useState<number>(goal?.dailyAvailableMinutes || 15);
   const [targetDomain, setTargetDomain] = useState<string>(goal?.targetDomain || 'general');
   const activePreset = GOAL_PRESETS.find((p) => p.id === targetDomain) || GOAL_PRESETS[0];
@@ -101,24 +101,11 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
             </div>
           </div>
 
-          {/* Real curriculum progress */}
-          <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="block text-[10px] font-black uppercase text-zinc-500">Learned</span>
-                <span className="text-2xl font-black text-zinc-900">{learnedPercent}%</span>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white"><div className="h-full bg-zinc-700" style={{ width: `${learnedPercent}%` }} /></div>
-              </div>
-              <div>
-                <span className="block text-[10px] font-black uppercase text-zinc-500">Mastered</span>
-                <span className="text-2xl font-black text-emerald-700">{masteredPercent}%</span>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white"><div className="h-full bg-emerald-500" style={{ width: `${masteredPercent}%` }} /></div>
-              </div>
-            </div>
-          </div>
-
           {/* Daily study time */}
           <div>
+            <label className="text-xs font-black uppercase tracking-wider text-zinc-500 block mb-2">
+              Daily Target Time
+            </label>
             <div className="flex items-center rounded-2xl border-2 border-zinc-200 bg-zinc-50 px-4 focus-within:border-emerald-500">
               <input
                 type="number"

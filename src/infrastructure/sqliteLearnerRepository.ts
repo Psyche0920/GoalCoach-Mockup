@@ -84,6 +84,34 @@ export class SqliteLearnerRepository {
     return Number(row.count);
   }
 
+  public hasEvent(eventId: string): boolean {
+    if (!eventId) return false;
+    const row = this.database.prepare('SELECT 1 FROM learning_event WHERE id = ?').get(eventId);
+    return Boolean(row);
+  }
+
+  public findEvent(eventId: string): LearningEvent | null {
+    if (!eventId) return null;
+    const row = this.database.prepare(`SELECT id, learner_id, plan_item_id, concept_ids_json, event_type,
+      started_at, last_active_at, active_seconds, estimated_minutes, engagement_score, grading_json, created_at
+      FROM learning_event WHERE id = ?`).get(eventId) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      learnerId: row.learner_id,
+      planItemId: row.plan_item_id,
+      conceptIds: JSON.parse(row.concept_ids_json) as string[],
+      eventType: row.event_type,
+      startedAt: row.started_at,
+      lastActiveAt: row.last_active_at,
+      activeSeconds: row.active_seconds,
+      estimatedMinutes: row.estimated_minutes,
+      engagementScore: row.engagement_score,
+      gradingResult: row.grading_json ? JSON.parse(row.grading_json) as LearningEvent['gradingResult'] : undefined,
+      createdAt: row.created_at,
+    };
+  }
+
   public findEventsForLearner(learnerId: string): LearningEvent[] {
     const rows = this.database.prepare(`SELECT id, learner_id, plan_item_id, concept_ids_json, event_type,
       started_at, last_active_at, active_seconds, estimated_minutes, engagement_score, grading_json, created_at

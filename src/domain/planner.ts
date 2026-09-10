@@ -135,18 +135,20 @@ export function generateDailyPlan(input: PlannerInput): DailyPlan {
     const freePlayReserve = remaining >= 4 ? 4 : 2;
     const anchorSequence = Math.min(...anchor.requiredConceptIds.map((conceptId) =>
       input.concepts.find((concept) => concept.conceptId === conceptId)?.sequenceNo ?? Number.POSITIVE_INFINITY));
+
+    // Sort unlearned units: first by theme match with learner interests / anchor, then by curriculum sequence
     const supplementalUnits = input.units
       .filter((unit) => unit.role === 'new_learning'
         && !anchor.requiredUnitIds.includes(unit.id)
-        && unit.supportedThemes.some((theme) => anchor.supportedThemes.includes(theme))
-        && unit.conceptIds.some((conceptId) => (input.progress[conceptId]?.learnedPercent ?? 0) < 100)
-        && unit.conceptIds.every((conceptId) =>
-          (input.concepts.find((concept) => concept.conceptId === conceptId)?.sequenceNo ?? 0) >= anchorSequence))
+        && unit.conceptIds.some((conceptId) => (input.progress[conceptId]?.learnedPercent ?? 0) < 100))
       .sort((left, right) => {
-        const leftSequence = input.concepts.find((concept) => concept.conceptId === left.conceptIds[0])?.sequenceNo ?? 999;
-        const rightSequence = input.concepts.find((concept) => concept.conceptId === right.conceptIds[0])?.sequenceNo ?? 999;
-        return leftSequence - rightSequence || left.id.localeCompare(right.id);
+        const leftThemeMatch = left.supportedThemes.some((t) => input.interests.includes(t) || anchor.supportedThemes.includes(t)) ? 1 : 0;
+        const rightThemeMatch = right.supportedThemes.some((t) => input.interests.includes(t) || anchor.supportedThemes.includes(t)) ? 1 : 0;
+        const leftSeq = input.concepts.find((c) => c.conceptId === left.conceptIds[0])?.sequenceNo ?? 999;
+        const rightSeq = input.concepts.find((c) => c.conceptId === right.conceptIds[0])?.sequenceNo ?? 999;
+        return rightThemeMatch - leftThemeMatch || leftSeq - rightSeq || left.id.localeCompare(right.id);
       });
+
     for (const unit of supplementalUnits) {
       const prerequisitesSatisfied = unit.prerequisiteConceptIds.every((conceptId) =>
         (input.progress[conceptId]?.learnedPercent ?? 0) >= 100 || scheduledConceptIds.has(conceptId));
@@ -156,7 +158,23 @@ export function generateDailyPlan(input: PlannerInput): DailyPlan {
       items.push(createItem(`new_${unit.id}`, 'new', unit.conceptIds, [unit.id], concept?.communicativeGoal ?? unit.functionId, unit.estimatedMinutes, `${prefix} · ${friendlyConceptName(unit.conceptIds[0], concept)}`));
       unit.conceptIds.forEach((conceptId) => scheduledConceptIds.add(conceptId));
       remaining -= unit.estimatedMinutes;
+      if (remaining <= freePlayReserve) break;
     }
+
+    // If remaining budget still exists, add consolidation reviews for learned concepts
+    if (remaining - freePlayReserve >= 3) {
+      const candidateConcepts = input.concepts.filter((c) =>
+        (input.progress[c.conceptId]?.learnedPercent ?? 0) >= 100 &&
+        !scheduledConceptIds.has(c.conceptId),
+      );
+      for (const concept of candidateConcepts) {
+        if (remaining - freePlayReserve < 3) break;
+        items.push(createItem(`review_${concept.conceptId}`, 'review', [concept.conceptId], [], `Consolidate ${concept.titleEn}.`, 3, `Consolidate · ${friendlyConceptName(concept.conceptId, concept)}`));
+        scheduledConceptIds.add(concept.conceptId);
+        remaining -= 3;
+      }
+    }
+
     const freePlayMinutes = Math.min(4, remaining);
     if (freePlayMinutes >= 2 && anchor.requiredConceptIds.every((id) =>
       items.some((item) => item.conceptIds.includes(id)) || (input.progress[id]?.learnedPercent ?? 0) > 0)) {
@@ -177,7 +195,23 @@ function buildPlan(
   blueprint: DailyGoalBlueprint | undefined,
   rationale: string,
 ): DailyPlan {
-  const estimatedMinutes = items.reduce((sum, item) => sum + item.estimatedMinutes, 0);
+  // Cap items so total estimated minutes strictly does not exceed input.budgetMinutes
+  let totalMinutes = 0;
+  const prunedItems: PlanItem[] = [];
+  for (const item of items) {
+    if (totalMinutes + item.estimatedMinutes <= input.budgetMinutes) {
+      prunedItems.push(item);
+      totalMinutes += item.estimatedMinutes;
+    } else {
+      const avail = input.budgetMinutes - totalMinutes;
+      if (avail >= 2) {
+        prunedItems.push({ ...item, estimatedMinutes: avail });
+        totalMinutes += avail;
+      }
+      break;
+    }
+  }
+
   return {
     id: `plan_${input.learnerId}_${input.date.slice(0, 10)}`,
     learnerId: input.learnerId,
@@ -185,9 +219,9 @@ function buildPlan(
     status: 'active',
     title: blueprint?.title ?? 'Daily consolidation',
     budgetMinutes: input.budgetMinutes,
-    estimatedMinutes,
+    estimatedMinutes: totalMinutes,
     effectiveMinutes: 0,
-    items,
+    items: prunedItems,
     rationale,
     blueprintId: blueprint?.id,
     outcome: blueprint?.outcome ?? 'Consolidate today\'s learning and prepare for tomorrow.',

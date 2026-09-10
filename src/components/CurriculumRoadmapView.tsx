@@ -298,7 +298,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                             ? 'bg-amber-100 text-amber-800 border border-amber-300 font-black' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Mastered: {node.score > 0 ? `${Math.round(node.score * 100)}%` : '—'}
+                          Mastered: {Math.round(node.score * 100)}%
                         </span>
                       </div>
                     </div>

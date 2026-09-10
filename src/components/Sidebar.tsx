@@ -31,6 +31,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   overallProgress,
   nextAction,
 }) => {
+  const overallPercent = Math.round(overallProgress > 1 ? Math.min(100, overallProgress) : Math.max(0, overallProgress) * 100);
   return (
     <aside className="w-68 shrink-0 hidden lg:flex flex-col border-r-2 border-zinc-200 bg-white min-h-screen px-5 py-6 select-none">
       {/* Brand Header with Bamboo Panda Logo (Clickable to open profile) */}
@@ -107,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               Goal Completion
             </div>
             <div className="text-[11px] text-zinc-300 font-medium leading-tight mt-0.5">
-              {Math.round(Math.max(0, Math.min(1, overallProgress)) * 100)}%
+              {overallPercent}%
             </div>
           </div>
         </div>
@@ -116,12 +117,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="space-y-1 pt-2 border-t border-slate-800">
           <div className="flex justify-between text-[10px] font-black text-slate-400">
             <span>Current progress</span>
-            <span className="text-emerald-400">{Math.round(overallProgress * 100)}%</span>
+            <span className="text-emerald-400">{overallPercent}%</span>
           </div>
           <div className="h-2 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
             <div
               className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${Math.round(Math.max(0, Math.min(1, overallProgress)) * 100)}%` }}
+              style={{ width: `${overallPercent}%` }}
             />
           </div>
         </div>

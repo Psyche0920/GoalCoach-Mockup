@@ -57,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const completedCount = learnerState?.activePlan?.items.filter((i) => i.completed).length || 0;
   const totalCount = learnerState?.activePlan?.items.length || 0;
+  const overallPercent = Math.round(overallProgress > 1 ? Math.min(100, overallProgress) : Math.max(0, overallProgress) * 100);
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-stone-200">
@@ -132,13 +133,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   Retention-Weighted
                 </div>
                 <div className="text-xs font-bold text-stone-800">
-                  {Math.round(overallProgress * 100)}% Progress
+                  {overallPercent}% Progress
                 </div>
               </div>
               <div className="w-12 bg-stone-200 rounded-full h-2 overflow-hidden">
                 <div
                   className="bg-amber-600 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.round(overallProgress * 100)}%` }}
+                  style={{ width: `${overallPercent}%` }}
                 />
               </div>
             </div>

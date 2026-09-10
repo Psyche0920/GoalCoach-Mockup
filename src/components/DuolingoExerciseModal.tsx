@@ -28,6 +28,7 @@ interface DuolingoExerciseModalProps {
   onClose: () => void;
   onSubmitAnswer: (exerciseId: string, answer: string) => Promise<GradingResult | null>;
   onRecordMistake?: (exerciseId: string, conceptId: string) => void;
+  onCompleteConcept?: (conceptId: string) => void;
 }
 
 // Helper to extract the complete full target sentence in Chinese (not just a single word or answer token)
@@ -109,6 +110,7 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
   onClose,
   onSubmitAnswer,
   onRecordMistake,
+  onCompleteConcept,
 }) => {
   const [loading, setLoading] = useState(true);
   const [concept, setConcept] = useState<CurriculumConcept | null>(null);
@@ -331,6 +333,9 @@ export const DuolingoExerciseModal: React.FC<DuolingoExerciseModalProps> = ({
     if (currentExerciseIndex < exercises.length - 1) {
       setCurrentExerciseIndex(currentExerciseIndex + 1);
     } else {
+      if (onCompleteConcept) {
+        onCompleteConcept(conceptId);
+      }
       handleClose();
     }
   };

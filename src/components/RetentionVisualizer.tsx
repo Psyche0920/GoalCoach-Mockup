@@ -37,7 +37,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
   overallProgress,
   onReviewConcept,
 }) => {
-  const goalCompletionPercent = Math.round(Math.max(0, Math.min(1, overallProgress)) * 100);
+  const goalCompletionPercent = Math.round(overallProgress > 1 ? Math.min(100, overallProgress) : Math.max(0, overallProgress) * 100);
   // Timeframe state: default to 'all' (From Day 1 onwards)
   const [timeframe, setTimeframe] = useState<'all' | '30d' | '7d'>('all');
 
