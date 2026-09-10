@@ -170,38 +170,6 @@ export interface GoalPreset {
 
 export const GOAL_PRESETS: GoalPreset[] = [
   {
-    id: 'general',
-    titleZh: '全能通关 HSK 1 备考',
-    titleEn: 'All-round HSK 1 Mastery',
-    icon: '🌟',
-    badge: 'Standard HSK 1',
-    descriptionZh: '循序渐进掌握官方150词汇与全部语法考点，备考或系统学习首选。',
-    descriptionEn: 'Systematic step-by-step path covering all 150 vocabulary and all grammar points.',
-    priorityThemes: [
-      'core_grammar',
-      'greetings_etiquette',
-      'identity_family',
-      'numbers_time',
-      'dining_food',
-      'shopping_prices',
-      'travel_directions',
-      'daily_life',
-      'work_study',
-      'weather_feelings',
-    ],
-    module2UnitOrder: [
-      'greetings_etiquette',
-      'identity_family',
-      'numbers_time',
-      'dining_food',
-      'shopping_prices',
-      'travel_directions',
-      'daily_life',
-      'work_study',
-      'weather_feelings',
-    ],
-  },
-  {
     id: 'travel',
     titleZh: '中国旅游与自由行',
     titleEn: 'Travel & Tourism in China',

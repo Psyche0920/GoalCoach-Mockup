@@ -20,7 +20,7 @@ This matrix makes the Senior AI Engineering Review actionable. “Planned” mea
 | Week 1 state and persistence | Vertical-loop tests and SQLite adapter | Content repository and integration tests implemented; learner-state repository/loop TODO |
 | Week 2 grader and teaching loop | Grader/Teacher contracts and evaluation directory | Interfaces exist; implementation TODO |
 | Week 3 API and async persistence | FastAPI boundary and background updater | API scaffold exists; wiring TODO |
-| Week 4 UI, fallback, validation, demo | Streamlit shell, fallback config, benchmark and demo-seed script plan | Scaffolded/planned |
+| Week 4 UI, fallback, validation, demo | React shell, fallback config, benchmark and demo-seed script plan | Implemented/in progress |
 
 ## Clarification precedence
 

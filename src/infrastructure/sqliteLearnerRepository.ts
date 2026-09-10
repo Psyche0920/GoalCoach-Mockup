@@ -77,6 +77,46 @@ export class SqliteLearnerRepository {
     }
   }
 
+  public countEventsForPlanItem(planItemId: string, evidenceType?: LearningEvent['eventType']): number {
+    const row = evidenceType
+      ? this.database.prepare('SELECT COUNT(*) AS count FROM learning_event WHERE plan_item_id = ? AND event_type = ?').get(planItemId, evidenceType) as { count: number }
+      : this.database.prepare('SELECT COUNT(*) AS count FROM learning_event WHERE plan_item_id = ?').get(planItemId) as { count: number };
+    return Number(row.count);
+  }
+
+  public findEventsForLearner(learnerId: string): LearningEvent[] {
+    const rows = this.database.prepare(`SELECT id, learner_id, plan_item_id, concept_ids_json, event_type,
+      started_at, last_active_at, active_seconds, estimated_minutes, engagement_score, grading_json, created_at
+      FROM learning_event WHERE learner_id = ? ORDER BY created_at`).all(learnerId) as Array<{
+        id: string;
+        learner_id: string;
+        plan_item_id: string;
+        concept_ids_json: string;
+        event_type: LearningEvent['eventType'];
+        started_at: string;
+        last_active_at: string;
+        active_seconds: number;
+        estimated_minutes: number;
+        engagement_score: number;
+        grading_json: string | null;
+        created_at: string;
+      }>;
+    return rows.map((row) => ({
+      id: row.id,
+      learnerId: row.learner_id,
+      planItemId: row.plan_item_id,
+      conceptIds: JSON.parse(row.concept_ids_json) as string[],
+      eventType: row.event_type,
+      startedAt: row.started_at,
+      lastActiveAt: row.last_active_at,
+      activeSeconds: row.active_seconds,
+      estimatedMinutes: row.estimated_minutes,
+      engagementScore: row.engagement_score,
+      gradingResult: row.grading_json ? JSON.parse(row.grading_json) as LearningEvent['gradingResult'] : undefined,
+      createdAt: row.created_at,
+    }));
+  }
+
   private migrate(): void {
     this.database.exec(`
       CREATE TABLE IF NOT EXISTS learner_state (

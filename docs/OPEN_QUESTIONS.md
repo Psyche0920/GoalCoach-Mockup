@@ -12,7 +12,6 @@ Items marked `TODO(decision)` require team or mentor confirmation.
 - [ ] What grader-vs-human agreement metric and target constitute MVP success?
 - [ ] Does vector retrieval outperform structured lookup on a representative test set?
 - [ ] Does LangGraph improve the implemented workflow enough to justify the dependency?
-- [ ] Is Streamlit sufficient for the demo, or is a custom frontend in scope?
 - [ ] What authentication/privacy requirements apply to learner data?
 - [ ] What code license and content/data licenses should the repository use?
 - [ ] Confirm current team membership and ownership boundaries.

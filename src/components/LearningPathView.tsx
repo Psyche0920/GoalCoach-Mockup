@@ -601,7 +601,7 @@ export const LearningPathView: React.FC<LearningPathViewProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-indigo-800 font-medium">
-                  旅游交通、职场工作、餐饮美食、商场购物、社交问候、家庭人际、日常作息、天气身心与毕业大通关。
+                  旅游交通、职场工作、餐饮美食、商场购物、社交问候、家庭人际、日常作息与天气身心。
                 </p>
                 <div className="flex flex-wrap gap-1 pt-1">
                   {['旅游交通', '商务工作', '美食点餐', '购物问价', '问候社交'].map((t) => (

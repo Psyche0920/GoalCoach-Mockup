@@ -11,8 +11,15 @@ import {
 import { CurriculumConcept, LearnerState } from '../types';
 import { FIVE_PINYIN_UNITS } from '../data/pinyinUnitsData';
 import { audioFeedback } from '../utils/audioFeedback';
+import { masteredProgressScore } from '../domain/progress.ts';
 
 export type MainBranchType = 'all' | 'pinyin' | 'grammar' | 'scenarios';
+
+const englishOnly = (value: string): string => value
+  .replace(/[\p{Script=Han}]/gu, '')
+  .replace(/\(\s*\)/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
 
 export interface PedagogicalNode {
   id: string;
@@ -35,7 +42,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   // ================= BRANCH 1: PINYIN (Left Branch) =================
   {
     id: 'node-pinyin-intro',
-    conceptId: 'pinyin_u1',
+    conceptId: 'hsk1_p01',
     isPinyin: true,
     branch: 'pinyin',
     subBranch: 'Intro & Anatomy',
@@ -50,7 +57,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   },
   {
     id: 'node-pinyin-tones',
-    conceptId: 'pinyin_u2',
+    conceptId: 'hsk1_p02',
     isPinyin: true,
     branch: 'pinyin',
     subBranch: '4 Tones',
@@ -65,7 +72,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   },
   {
     id: 'node-pinyin-initials',
-    conceptId: 'pinyin_u3',
+    conceptId: 'hsk1_p03',
     isPinyin: true,
     branch: 'pinyin',
     subBranch: 'Initials (声母)',
@@ -80,7 +87,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   },
   {
     id: 'node-pinyin-finals',
-    conceptId: 'pinyin_u4',
+    conceptId: 'hsk1_p04',
     isPinyin: true,
     branch: 'pinyin',
     subBranch: 'Finals (韵母)',
@@ -95,7 +102,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   },
   {
     id: 'node-pinyin-sandhi',
-    conceptId: 'pinyin_u5',
+    conceptId: 'hsk1_p05',
     isPinyin: true,
     branch: 'pinyin',
     subBranch: 'Tone Rules',
@@ -112,7 +119,7 @@ export const TREE_PEDAGOGICAL_NODES: PedagogicalNode[] = [
   // ================= BRANCH 2: GRAMMAR (Center / Upward Branch) =================
   {
     id: 'node-grammar-wordorder',
-    conceptId: 'hsk1_c01',
+    conceptId: 'hsk1_c04',
     isPinyin: false,
     branch: 'grammar',
     subBranch: 'Sentence Structure',
@@ -380,13 +387,16 @@ export const KnowledgeTree: React.FC<KnowledgeTreeProps> = ({
   const evaluatedNodes = useMemo(() => {
     return TREE_PEDAGOGICAL_NODES.map((node) => {
       const mastery = learnerState?.mastery?.[node.conceptId];
-      const evidence = mastery?.evidenceCount || 0;
-      const score = evidence > 0 ? mastery?.masteryScore || 0.7 : 0.0;
+      const progress = learnerState?.conceptProgress?.[node.conceptId];
+      const evidence = progress?.evidenceDays ?? mastery?.evidenceCount ?? 0;
+      const score = progress
+        ? masteredProgressScore(progress)
+        : (evidence > 0 ? mastery?.masteryScore ?? 0 : 0);
 
       let stateType: 'leaf' | 'green_apple' | 'red_apple' = 'leaf';
-      if (score >= 0.8 && evidence > 0) {
+      if (progress?.status === 'mastered') {
         stateType = 'red_apple';
-      } else if (evidence > 0 || score > 0) {
+      } else if ((progress?.learnedPercent ?? 0) > 0 || evidence > 0 || score > 0) {
         stateType = 'green_apple';
       } else {
         stateType = 'leaf';
@@ -553,16 +563,11 @@ export const KnowledgeTree: React.FC<KnowledgeTreeProps> = ({
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5">
                 <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
-                  {hoveredNode.node.branch.toUpperCase()} · {hoveredNode.node.subBranch}
+                  {hoveredNode.node.branch.toUpperCase()} · {englishOnly(hoveredNode.node.subBranch)}
                 </span>
                 <h4 className="text-sm font-black text-white leading-tight">
-                  {hoveredNode.node.fullTitleEn}
+                  {englishOnly(hoveredNode.node.fullTitleEn)}
                 </h4>
-                {hoveredNode.node.titleZh && (
-                  <div className="text-xs font-bold text-zinc-400">
-                    {hoveredNode.node.titleZh} {hoveredNode.node.pinyin ? `(${hoveredNode.node.pinyin})` : ''}
-                  </div>
-                )}
               </div>
 
               {/* Status Badge */}
@@ -588,7 +593,7 @@ export const KnowledgeTree: React.FC<KnowledgeTreeProps> = ({
               <div className="font-bold text-zinc-400 mb-0.5 flex items-center gap-1">
                 <Info className="w-3 h-3 text-emerald-400" /> Pedagogical Grounding:
               </div>
-              {hoveredNode.node.rationale}
+              {englishOnly(hoveredNode.node.rationale)}
             </div>
 
             {/* Mastery & Review Stat */}
@@ -1057,7 +1062,7 @@ export const KnowledgeTree: React.FC<KnowledgeTreeProps> = ({
                       fill="#09090b"
                       className="select-none tracking-tight font-sans"
                     >
-                      {node.shortLabel}
+                      {englishOnly(node.shortLabel)}
                     </text>
                   </g>
                 </g>

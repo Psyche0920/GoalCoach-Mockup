@@ -18,6 +18,8 @@ export interface PinyinPhonemeCard {
   exampleWords?: { hanzi: string; pinyin: string; meaningEn: string }[];
   toneNumber?: number;
   pitchContour?: string;
+  metadata?: import('../types.ts').PinyinContentMetadata;
+  qualityChecklist?: import('../types.ts').PinyinContentQualityChecklist;
 }
 
 export interface PinyinCurriculumUnitDef {

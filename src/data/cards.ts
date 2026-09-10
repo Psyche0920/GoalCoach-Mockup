@@ -834,20 +834,4 @@ export const HSK1_TEACHING_CARDS_EXPANDED: TeachingCard[] = [
     exampleEn: 'He went to the train station. I am no longer cold.',
   },
 
-  // hsk1_c36: HSK 1 Capstone Dialogue
-  {
-    id: 37,
-    conceptId: 'hsk1_c36',
-    cardOrder: 1,
-    cardType: 'mini_dialogue',
-    theme: 'greetings_etiquette',
-    tags: ['capstone', 'conversation', 'hsk1_exam'],
-    promptZh: 'HSK 1 实战综合对话',
-    pinyin: 'HSK 1 Comprehensive Simulation',
-    meaningEn: 'Putting all skills together',
-    explanationEn: 'You can now introduce yourself, ask directions, order meals, pay, and converse in Mandarin!',
-    exampleZh: 'A: 你好！请问饭馆在哪儿？\nB: 在火车站前面。你想吃什么？\nA: 我想吃中国菜，喝茶。谢谢你！\nB: 不客气，再见！',
-    examplePinyin: 'A: nǐ hǎo! qǐngwèn fànguǎn zài nǎr?\nB: zài huǒchēzhàn qiánmian. nǐ xiǎng chī shénme?\nA: wǒ xiǎng chī Zhōngguó cài, hē chá. xièxie nǐ!\nB: bú kèqi, zàijiàn!',
-    exampleEn: 'A: Hello! Where is the restaurant?\nB: In front of the train station. What do you want to eat?\nA: I want Chinese food and tea. Thank you!\nB: You’re welcome, goodbye!',
-  },
 ];

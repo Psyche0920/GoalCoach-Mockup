@@ -20,6 +20,7 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
   onOpenChat,
   onOpenProfile,
 }) => {
+  const goalCompletionPercent = Math.round(Math.max(0, Math.min(1, overallProgress)) * 100);
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b-2 border-zinc-200 px-4 sm:px-8 py-3 select-none">
       <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -38,10 +39,10 @@ export const TopStatusBar: React.FC<TopStatusBarProps> = ({
           <button
             onClick={onOpenProfile}
             className="flex items-center gap-2 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl border border-emerald-300 transition-colors cursor-pointer"
-            title="Click to view or edit target goal"
+            title="Open learner profile"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-600" />
-            <span>HSK 1 Beginner · 150 Words</span>
+            <span>Goal Completion · {goalCompletionPercent}%</span>
           </button>
         </div>
 

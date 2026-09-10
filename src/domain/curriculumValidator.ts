@@ -1,4 +1,5 @@
 import { CurriculumConcept, DailyGoalBlueprint, LearningUnit } from '../types.ts';
+import { PinyinContentQualityChecklist } from '../types.ts';
 
 export class CurriculumValidationError extends Error {
   public constructor(public readonly violations: string[]) {
@@ -59,6 +60,21 @@ export class CurriculumCoverageValidator {
     };
     for (const id of conceptIds) visit(id, []);
 
+    if (violations.length > 0) throw new CurriculumValidationError(violations);
+  }
+
+  public validatePinyinCards(cards: readonly { id: string; pinyin: string; hanziPinyin: string; exampleWords?: readonly { pinyin: string }[]; metadata?: { targetSyllables: readonly string[]; reviewedByHuman: boolean }; qualityChecklist?: PinyinContentQualityChecklist }[]): void {
+    const violations: string[] = [];
+    for (const card of cards) {
+      if (card.pinyin !== card.hanziPinyin && card.hanziPinyin.trim() !== '') violations.push(`Pinyin mismatch: ${card.id}`);
+      if (!card.metadata) violations.push(`Missing Pinyin metadata: ${card.id}`);
+      else {
+        const searchable = [card.pinyin, ...(card.exampleWords ?? []).map((word) => word.pinyin)].join(' ').toLowerCase();
+        if (!card.metadata.targetSyllables.some((syllable) => searchable.includes(syllable.toLowerCase()))) violations.push(`Target syllable not present: ${card.id}`);
+        if (!card.metadata.reviewedByHuman) violations.push(`Pinyin card is not human-reviewed: ${card.id}`);
+      }
+      if (card.qualityChecklist && !card.qualityChecklist.productionReady) violations.push(`Pinyin card is not production-ready: ${card.id}`);
+    }
     if (violations.length > 0) throw new CurriculumValidationError(violations);
   }
 }

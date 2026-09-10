@@ -1,7 +1,7 @@
 export type Score = number; // 0.0 to 1.0
 
 export type PlanItemKind = 'review' | 'remedial' | 'new' | 'free_play' | 'daily_quiz';
-export type PlanStatus = 'active' | 'exhausted' | 'invalid';
+export type PlanStatus = 'active' | 'learning_complete' | 'assessment_required' | 'completed' | 'exhausted' | 'invalid';
 export type NextAction = 'plan_goal' | 'plan_review' | 'regenerate_plan' | 'teach';
 
 export type ConceptCategory = 'pinyin' | 'grammar' | 'general_knowledge' | 'scenario';
@@ -60,6 +60,7 @@ export interface PlanItem {
   conceptIds?: string[];
   unitIds?: string[];
   kind: PlanItemKind;
+  title?: string;
   outcome?: string;
   objective: string;
   estimatedMinutes: number;
@@ -74,13 +75,21 @@ export interface DailyPlan {
   learnerId: string;
   date: string;
   status: PlanStatus;
+  title?: string;
+  budgetMinutes?: number;
+  estimatedMinutes?: number;
+  effectiveMinutes?: number;
   items: PlanItem[];
   rationale: string;
   blueprintId?: string;
   outcome?: string;
   freeformCompleted?: boolean;
+  freeformAssessment?: FreeformAssessmentSpec;
   stateVersion?: number;
   generatedAt: string;
+  createdAt?: string;
+  completedAt?: string;
+  plannerVersion?: number;
 }
 
 export type ExerciseType = 
@@ -191,13 +200,16 @@ export interface CompletionRule {
 }
 
 export interface FreeformAssessmentSpec {
-  mode: 'scenario_dialogue' | 'writing';
+  mode: 'translation' | 'scenario_writing';
   targetConceptIds: string[];
   allowedInputScripts: Array<'hanzi' | 'pinyin_tone_marks' | 'pinyin_tone_numbers'>;
   minimumTurns?: number;
   completionGate: { targetConceptScore: number; taskAchievementScore: number };
   allowedLanguage: string[];
   example: string;
+  prompt?: string;
+  responseChoices?: string[];
+  requiredResponsePatterns?: string[][];
 }
 
 export interface DailyGoalBlueprint {
@@ -209,20 +221,30 @@ export interface DailyGoalBlueprint {
   outputTemplateId: string;
   prerequisiteConceptIds: string[];
   estimatedMinutes: number;
+  maximumDailyBudgetMinutes?: number;
   supportedThemes: CurriculumTheme[];
   freeformAssessment: FreeformAssessmentSpec;
+  planningEnabled?: boolean;
 }
 
 export interface ConceptProgress {
   learnerId: string;
   conceptId: string;
   learnedPercent: number;
+  learningEvidence?: {
+    cardCompletion: number;
+    practiceCompletion: number;
+    outputCompletion: number;
+  };
+  learningCompletionVersion?: number;
+  retentionModelVersion?: number;
   masteryScore: number;
   retentionAtReview: number;
   decayLambda: number;
   successfulSpacedRetrievals: number;
   evidenceDays: number;
   averageQuality: number;
+  qualityEvidenceCount?: number;
   status: 'not_started' | 'learning' | 'almost_mastered' | 'mastered';
   lastReviewedAt?: string;
   nextReviewAt?: string;
@@ -246,8 +268,21 @@ export interface LearningEvent {
 export interface ProgressSummary {
   stateVersion: number;
   courseCoverage: number;
+  learnedProgress: number;
+  masteredProgress: number;
   goalCompletion: number;
   dailyEffectiveMinutes: number;
+}
+
+export interface LearningUpdateResponse {
+  stateVersion: number;
+  plan: DailyPlan;
+  affectedConcepts: ConceptProgress[];
+  progressSummary: ProgressSummary;
+  curriculumTree: {
+    stateVersion: number;
+    modules: Array<{ moduleId: string; concepts: Array<CurriculumConcept & { progress?: ConceptProgress }> }>;
+  };
 }
 
 export interface PinyinContentMetadata {
@@ -260,6 +295,19 @@ export interface PinyinContentMetadata {
   pedagogicalPurpose: 'perception' | 'articulation' | 'blending' | 'contrast' | 'production';
   reviewedByHuman: boolean;
   reviewNotes?: string;
+}
+
+export interface PinyinContentQualityChecklist {
+  singleTeachingGoal: boolean;
+  targetAlignment: boolean;
+  beginnerAppropriate: boolean;
+  naturalExamples: boolean;
+  noUnintroducedGrammar: boolean;
+  conciseBody: boolean;
+  understandableExamples: boolean;
+  audioPinyinHanziAligned: boolean;
+  humanReviewed: boolean;
+  productionReady: boolean;
 }
 
 export interface AnswerSubmission {
@@ -282,6 +330,7 @@ export interface GradingResult {
   confidence: Score;
   feedback: string;
   detectedErrors: string[];
+  conceptErrors?: Array<{ code: string; conceptId: string; explanation: string }>;
   evidence?: string;
   graderVersion: string;
 }
@@ -296,6 +345,7 @@ export interface SessionSummary {
 
 export interface LearnerState {
   learnerId: string;
+  displayName?: string;
   goal: LearningGoal | null;
   goalChanged: boolean;
   mastery: Record<string, ConceptMastery>;

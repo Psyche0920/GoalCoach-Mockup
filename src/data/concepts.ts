@@ -1097,32 +1097,6 @@ export const HSK1_CONCEPTS_EXPANDED: CurriculumConcept[] = [
       general: { zh: '这个汉字怎么读？怎么写？', pinyin: 'Zhège Hànzì zěnme dú? Zěnme xiě?', en: 'How is this character pronounced? How is it written?' },
     },
   },
-  {
-    conceptId: 'hsk1_c36',
-    hskLevel: 1,
-    sequenceNo: 36,
-    slug: 'capstone_mastery',
-    titleZh: '实战：HSK 1 毕业情境综合大通关',
-    titleEn: 'Capstone: Integrated Real-World Scenarios',
-    conceptType: 'communication',
-    category: 'scenario',
-    module: 'module2_vocabulary',
-    theme: 'core_grammar',
-    tags: ['capstone', 'mastery', 'dialogue', 'real_world', 'graduation'],
-    isCoreGrammar: false,
-    communicativeGoal: 'Integrate full 150 vocabulary and all grammar points in fluid real-life conversations.',
-    grammarFocus: ['综合交际与语篇连贯'],
-    vocabularyFocus: ['全量 HSK 1 150 词汇深度融合'],
-    difficulty: 3,
-    estimatedMinutes: 10,
-    tailoredExamples: {
-      travel: { zh: '大卫顺利完成了中国自由行，学会了用中文订票、问路、结账。', pinyin: 'Dàwèi shùnlì wánchéng le Zhōngguó zìyóuxíng, xuéhuì le yòng Zhōngwén dìngpiào, wènlù, jiézhàng.', en: 'David smoothly completed his China trip, booking tickets, asking way, and paying in Chinese.' },
-      work: { zh: '在跨国公司周会上，外国同事用流利中文完成了自我介绍与业务汇报。', pinyin: 'Zài kuàguó gōngsī zhōuhuì shàng, wàiguó tóngshì yòng liúlì Zhōngwén wánchéng le zìwǒ jièshào hé yèwù huìbào.', en: 'In the all-hands meeting, the colleague introduced themselves and reported fluently in Chinese.' },
-      dining: { zh: '我们在北京全聚德用中文完成了点菜、赞美和买单，服务员竖起大拇指！', pinyin: 'Wǒmen zài Běijīng Quánjùdé yòng Zhōngwén wánchéng le diǎncài, zànměi hé mǎidān, fúwùyuán shù qǐ dàmǔzhǐ!', en: 'We ordered, complimented, and paid in Chinese at Quanjude; the waiter gave a thumbs up!' },
-      daily: { zh: '我已经可以和中国朋友用微信打电话闲聊日常生活啦！', pinyin: 'Wǒ yǐjīng kěyǐ hé Zhōngguó péngyou yòng Wēixìn dǎ diànhuà xiánliáo rìcháng shēnghuó la!', en: 'I can now chat casually about daily life with Chinese friends over WeChat calls!' },
-      general: { zh: '祝贺您！您已经完整掌握了 HSK 1 的 150 个核心词汇与全部基础句型。', pinyin: 'Zhùhè nín! Nín yǐjīng wánzhěng zhǎngwò le HSK 1 de 150 ge héxīn cíhuì hé quánbù jīchǔ jùxíng.', en: 'Congratulations! You have mastered all 150 HSK 1 words and all foundational grammar patterns.' },
-    },
-  },
 ];
 
 export const HSK1_CONCEPTS: CurriculumConcept[] = HSK1_CONCEPTS_EXPANDED;

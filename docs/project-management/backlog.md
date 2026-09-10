@@ -16,7 +16,7 @@ Status values: `TODO`, `IN PROGRESS`, `BLOCKED`, `DONE`. Owners below are propos
 | P1 | Async | Decouple non-urgent updates from response path | Jiyan / Musab | TODO | Latency trace shows no sequential agent chain |
 | P1 | Evaluation | Label and adjudicate 30–50 representative HSK1 answers | Weng Man + team | TODO | Versioned benchmark and annotation guide |
 | P1 | Models | Add hosted client, budget guard, and Ollama fallback | Musab / Weijia | TODO | Forced-fallback test passes |
-| P1 | UI | Connect daily plan, exercise, feedback, and progress dashboard | `TODO(owner)` | TODO | Complete learner flow through Streamlit |
+| P1 | UI | Connect daily plan, exercise, feedback, and progress dashboard | `TODO(owner)` | TODO | Complete learner flow through React |
 | P1 | Telemetry | Record latency, tokens, cost, validation, and fallback | Musab / Jiyan | TODO | Trace attached to a complete session |
 | P2 | Retrieval | Benchmark SQL/metadata versus vector retrieval | Weng Man / Weijia | TODO | Recorded comparison and ADR |
 | P2 | Workflow | Evaluate LangGraph against plain Python implementation | Musab / Weijia | TODO | ADR documents measured benefit or rejection |

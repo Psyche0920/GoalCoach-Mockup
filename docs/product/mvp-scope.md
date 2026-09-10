@@ -17,7 +17,7 @@ Goal -> Plan -> Teach -> Grade -> Update -> Adapt -> Re-plan
 - Concept mastery, retention, recurring error profile, and review schedule.
 - Honest progress computed from mastery multiplied by retention.
 - Multi-session SQLite persistence.
-- Minimal FastAPI API and Streamlit learner experience.
+- Express API and React learner experience.
 - Human-labelled grader benchmark and error analysis.
 - Hosted model with a local Ollama demonstration fallback.
 

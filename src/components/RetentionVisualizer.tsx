@@ -27,14 +27,17 @@ import { KnowledgeTree } from './KnowledgeTree.tsx';
 interface RetentionVisualizerProps {
   learnerState: LearnerState | null;
   concepts: CurriculumConcept[];
+  overallProgress: number;
   onReviewConcept: (conceptId: string, isPinyin?: boolean) => void;
 }
 
 export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
   learnerState,
   concepts,
+  overallProgress,
   onReviewConcept,
 }) => {
+  const goalCompletionPercent = Math.round(Math.max(0, Math.min(1, overallProgress)) * 100);
   // Timeframe state: default to 'all' (From Day 1 onwards)
   const [timeframe, setTimeframe] = useState<'all' | '30d' | '7d'>('all');
 
@@ -80,9 +83,6 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
       masteredCount: mastered,
     };
   }, [concepts, learnerState, cardCountByConcept, totalCards]);
-
-  // 目标完成百分比 (依据卡片完成度)
-  const completionPercent = Math.min(100, Math.round((completedCards / Math.max(1, totalCards)) * 100));
 
   // 剩余未完成卡片数
   const remainingCards = Math.max(0, totalCards - completedCards);
@@ -208,7 +208,7 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
               <span>Goal Progress</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-zinc-950 tracking-tight">
-              Goal Completion <span className="text-emerald-600 text-3xl sm:text-4xl">{completionPercent}%</span>
+              Goal Completion <span className="text-emerald-600 text-3xl sm:text-4xl">{goalCompletionPercent}%</span>
             </h1>
             <p className="text-sm font-semibold text-zinc-600 max-w-xl leading-relaxed">
               {hasActiveHistory ? (
@@ -247,14 +247,14 @@ export const RetentionVisualizer: React.FC<RetentionVisualizerProps> = ({
         <div className="space-y-2 pt-2">
           <div className="flex justify-between items-center text-xs font-black">
             <span className="text-zinc-500">
-              HSK 1 Curriculum: {completedCards} of {totalCards} cards completed
+              Goal Completion
             </span>
-            <span className="text-emerald-700 font-black text-sm">{completionPercent}%</span>
+            <span className="text-emerald-700 font-black text-sm">{goalCompletionPercent}%</span>
           </div>
           <div className="w-full bg-zinc-100 rounded-full h-4 overflow-hidden border-2 border-zinc-200 p-0.5">
             <div
               className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-emerald-400 via-emerald-500 to-green-600 shadow-xs"
-              style={{ width: `${Math.max(completionPercent > 0 ? 5 : 0, completionPercent)}%` }}
+              style={{ width: `${goalCompletionPercent}%` }}
             />
           </div>
         </div>

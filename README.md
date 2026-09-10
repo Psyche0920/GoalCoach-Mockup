@@ -17,7 +17,7 @@ Unlike a fixed course or a stateless chatbot, GoalCoach persists concept-level m
 - Deterministic workflow routing and state updates where rules are sufficient.
 - LLM use only for language-heavy work: grading, feedback, explanations, and optionally complex planning.
 - Persistent learner state in SQLite.
-- FastAPI backend and a minimal Streamlit client.
+- Express backend and a React client.
 - Human-labelled grader benchmark before introducing a second judge model.
 - Structured content lookup first; vector retrieval only after its value is measured.
 
@@ -26,9 +26,9 @@ Not in the initial MVP: broad HSK1–6 content coverage, production authenticati
 ## Architecture
 
 ```text
-Streamlit / future web client
+        React / Vite client
             |
-         FastAPI
+          Express
             |
     Application services
             |
@@ -76,23 +76,12 @@ Progress and planning are separate concerns: progress describes the learner's cu
 ## Repository layout
 
 ```text
-apps/
-  api/                 FastAPI composition root and HTTP routes
-  web/                 Streamlit MVP client
-src/goalcoach/
-  domain/              Stable Pydantic models and enums
-  ui/                  Workflow orchestration and application interfaces
-  agents/
-    goal_planning.py   Goal Planning Agent
-    progress_mastery.py Progress & Mastery Agent
-    retrieval.py       Retrieval Agent
-    teaching.py        Teaching Agent
-    grading.py         Chinese Grader component
-    interfaces.py      Shared Agent contracts
-  infrastructure/      SQLite, LLM, and retrieval adapters
-tests/
-  unit/                Domain and deterministic algorithm tests
-  integration/         Persistence/API learning-loop tests
+server.ts              Express composition root and HTTP routes
+src/
+  components/          React learning experience
+  domain/              Deterministic planner, grading, and progress logic
+  infrastructure/      SQLite learner-state repository
+  data/                Curriculum concepts, units, and assessments
 data/
   curriculum/          Licensed, curated HSK content
   evaluation/          Human-labelled grading benchmark
@@ -136,23 +125,12 @@ Grading records semantic/task achievement, grammatical correctness, target-conce
 
 ## Getting started
 
-Prerequisites: Python 3.11+.
+Prerequisites: Node.js 22+.
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-cp .env.example .env
-sqlite3 data/database1/goalcoach_hsk1_learning.db \
-  < data/database1/GoalCoach_HSK1_Learning_DB_Package/data/goalcoach_hsk1_learning_db_sqlite.sql
-pytest
-uvicorn apps.api.main:app --reload
-```
-
-In another terminal, the placeholder client can be started with:
-
-```bash
-streamlit run apps/web/app.py
+npm install
+npm test
+npm run dev
 ```
 
 Database #1 structured content is available through the SQLAlchemy `ContentRepository`, with
@@ -188,14 +166,13 @@ These are tracked in [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md). The mos
 - final planning frequency;
 - validated rubric gates, mastery thresholds, and retention parameters;
 - authoritative HSK version and content sources with redistribution rights;
-- frontend choice after the Streamlit prototype;
 - whether LangGraph and ChromaDB add measurable value.
 
 Delivery planning is maintained in [`docs/project-management/`](docs/project-management/README.md). Original PDFs in `Proposal/` are treated as read-only source material; evolving decisions belong in docs or ADRs.
 
 ## Development principles
 
-- Keep domain logic independent of FastAPI, Streamlit, model SDKs, and databases.
+- Keep domain logic independent of Express, React, model SDKs, and databases.
 - Prefer deterministic code for routing, retention, aggregation, and exact lookup.
 - Validate every LLM output against a strict schema.
 - Never place secrets, learner data, or unlicensed source content in Git.

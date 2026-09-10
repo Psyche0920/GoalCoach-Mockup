@@ -104,10 +104,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <PandaMascot mood="cheering" size={52} />
           <div>
             <div className="text-xs font-black text-emerald-400 uppercase tracking-wider group-hover:text-emerald-300 transition-colors">
-              HSK 1 Learner
+              Goal Completion
             </div>
             <div className="text-[11px] text-zinc-300 font-medium leading-tight mt-0.5">
-              Goal: 150 Words
+              {Math.round(Math.max(0, Math.min(1, overallProgress)) * 100)}%
             </div>
           </div>
         </div>
@@ -115,13 +115,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Progress bar inside card */}
         <div className="space-y-1 pt-2 border-t border-slate-800">
           <div className="flex justify-between text-[10px] font-black text-slate-400">
-            <span>Overall Retention</span>
+            <span>Current progress</span>
             <span className="text-emerald-400">{Math.round(overallProgress * 100)}%</span>
           </div>
           <div className="h-2 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
             <div
               className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${Math.round(overallProgress * 100)}%` }}
+              style={{ width: `${Math.round(Math.max(0, Math.min(1, overallProgress)) * 100)}%` }}
             />
           </div>
         </div>

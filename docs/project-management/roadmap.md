@@ -34,7 +34,7 @@ Goal: integrate the proven loop into a usable multi-session application.
 
 - Connect FastAPI endpoints and dependency wiring.
 - Run non-urgent state/planning work outside the synchronous response path.
-- Connect the Streamlit plan, exercise, feedback, and progress views.
+- Connect the React plan, exercise, feedback, and progress views.
 - Record latency, tokens, cost, model, prompt version, and fallbacks.
 - Test close/reopen persistence and recovery behavior.
 

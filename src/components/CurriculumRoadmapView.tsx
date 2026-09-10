@@ -3,7 +3,6 @@ import {
   Check, 
   Crown, 
   Sparkles, 
-  Lock, 
   Volume2, 
   Flame, 
   Trophy, 
@@ -19,6 +18,8 @@ import { PandaMascot } from './PandaMascot.tsx';
 import { CurriculumConcept, LearningGoal, LearnerState, CurriculumTheme } from '../types.ts';
 import { GOAL_PRESETS, THEME_REGISTRY } from '../data/curriculumThemes.ts';
 import { playMandarinAudio } from '../utils/pinyinAudio.ts';
+import { curriculumChineseSummary, curriculumShortTitle } from '../data/curriculumPresentation.ts';
+import { masteredProgressScore } from '../domain/progress.ts';
 
 interface CurriculumRoadmapViewProps {
   concepts: CurriculumConcept[];
@@ -28,6 +29,7 @@ interface CurriculumRoadmapViewProps {
   onUpdateGoal: (goal: Partial<LearningGoal>) => void;
   onOpenProfile?: () => void;
 }
+
 
 export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
   concepts,
@@ -87,25 +89,17 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
     return a.sequenceNo - b.sequenceNo;
   });
 
-  // Helper to inspect node status
-  // 1. Unlocked: Previous node is learned (学完) OR it is the very first node of the module
-  // 2. Learned (学完 100%): Mastery score >= 0.65 or marked learned in session
-  // 3. Mastered (掌握 100%): Verified retained mastery score >= 0.85 (Ebbinghaus curve)
+  // Learned measures unit completion. Mastered measures retained mastery over time.
   const getNodeProgress = (concept: CurriculumConcept, moduleList: CurriculumConcept[], idx: number) => {
-    const mastery = learnerState?.mastery?.[concept.conceptId];
     const progress = learnerState?.conceptProgress?.[concept.conceptId];
-    const score = progress?.masteryScore ?? mastery?.masteryScore ?? 0;
-    const learnedPercent = progress?.learnedPercent ?? ((mastery?.evidenceCount || 0) > 0 ? 100 : 0);
+    const learnedPercent = progress?.learnedPercent ?? 0;
+    const score = progress ? masteredProgressScore(progress) : 0;
     const isMastered = progress?.status === 'mastered';
     const isCompleted = learnedPercent === 100;
 
-    // A node is unlocked if it's the first in the module or the previous one is learned
-    const isFirst = idx === 0;
-    const prevConcept = isFirst ? null : moduleList[idx - 1];
-    const prevProgress = prevConcept ? learnerState?.conceptProgress?.[prevConcept.conceptId] : null;
-    const prevLearned = isFirst || prevProgress?.learnedPercent === 100;
-    const isUnlocked = isFirst || Boolean(prevLearned);
-    const isCurrentActive = isUnlocked && !isCompleted;
+    const isUnlocked = true;
+    const firstIncompleteIndex = moduleList.findIndex((item) => (learnerState?.conceptProgress?.[item.conceptId]?.learnedPercent ?? 0) < 100);
+    const isCurrentActive = idx === firstIncompleteIndex;
 
     return {
       score,
@@ -113,7 +107,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       isMastered,
       isUnlocked,
       isCurrentActive,
-      reviewCount: mastery?.evidenceCount || 0,
+      reviewCount: progress?.successfulSpacedRetrievals ?? 0,
       learnedPercent,
     };
   };
@@ -123,20 +117,27 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
     if (moduleList.length === 0) return { completedPct: 0, masteredPct: 0, total: 0, completedCount: 0, masteredCount: 0 };
     let completedCount = 0;
     let masteredCount = 0;
+    let learnedTotal = 0;
+    let readinessTotal = 0;
+    let weightTotal = 0;
 
     for (const c of moduleList) {
-      const mastery = learnerState?.mastery?.[c.conceptId];
-      const score = mastery?.masteryScore || 0;
-      if (score >= 0.65 || (mastery?.evidenceCount || 0) > 0) completedCount++;
-      if (score >= 0.85) masteredCount++;
+      const progress = learnerState?.conceptProgress?.[c.conceptId];
+      const learnedPercent = progress?.learnedPercent ?? 0;
+      if (learnedPercent === 100) completedCount++;
+      if (progress?.status === 'mastered') masteredCount++;
+      const weight = c.weight ?? 1;
+      learnedTotal += weight * learnedPercent;
+      readinessTotal += weight * (progress ? masteredProgressScore(progress) : 0) * 100;
+      weightTotal += weight;
     }
 
     return {
       total: moduleList.length,
       completedCount,
       masteredCount,
-      completedPct: Math.round((completedCount / moduleList.length) * 100),
-      masteredPct: Math.round((masteredCount / moduleList.length) * 100),
+      completedPct: Math.round(learnedTotal / Math.max(1, weightTotal)),
+      masteredPct: Math.round(readinessTotal / Math.max(1, weightTotal)),
     };
   };
 
@@ -152,7 +153,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
     const preset = GOAL_PRESETS.find((p) => p.id === domainId);
     if (!preset) return;
     onUpdateGoal({
-      title: `${preset.titleZh} (${preset.badge})`,
+      title: `${preset.titleEn} (${preset.badge})`,
       targetDomain: preset.id,
       interests: preset.priorityThemes,
       dailyAvailableMinutes: goal?.dailyAvailableMinutes || 20,
@@ -197,9 +198,6 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
               }`}>
                 {badgeText}
               </span>
-              <span className="text-xs font-bold text-zinc-400">
-                {conceptsList.length} Levels
-              </span>
             </div>
             <h3 className="text-xl font-black text-zinc-950 font-chinese tracking-tight">
               {titleZh}
@@ -242,6 +240,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             {conceptsList.map((concept, idx) => {
               const node = getNodeProgress(concept, conceptsList, idx);
               const zigzagClass = getZigzagOffsetClass(idx);
+              const isInTodayPlan = learnerState?.activePlan?.items.some((item) =>
+                (item.conceptIds ?? (item.conceptId ? [item.conceptId] : [])).includes(concept.conceptId)) ?? false;
 
               return (
                 <div 
@@ -264,56 +264,25 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                     )}
 
                     <button
-                      disabled={!node.isUnlocked}
                       onClick={() => onStartStudy(concept.conceptId, isPinyin)}
                       className={`w-18 h-18 sm:w-20 sm:h-20 rounded-3xl flex flex-col items-center justify-center font-black transition-all duration-200 cursor-pointer select-none ${
-                        !node.isUnlocked
-                          ? 'bg-zinc-100 text-zinc-400 border-2 border-zinc-200 shadow-none cursor-not-allowed'
-                          : node.isMastered
+                        node.isMastered
                           ? 'bg-gradient-to-b from-amber-400 to-amber-500 text-zinc-950 border-2 border-amber-600 shadow-[0_5px_0_#b45309] hover:shadow-[0_2px_0_#b45309] hover:translate-y-1'
                           : node.isCompleted
                           ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 shadow-[0_5px_0_#047857] hover:shadow-[0_2px_0_#047857] hover:translate-y-1'
                           : 'bg-white text-zinc-950 border-2 border-zinc-950 shadow-[0_5px_0_#09090b] hover:shadow-[0_2px_0_#09090b] hover:translate-y-1 ring-4 ring-emerald-500/20'
                       }`}
                     >
-                      {!node.isUnlocked ? (
-                        <Lock className="w-6 h-6 text-zinc-400" />
-                      ) : node.isMastered ? (
-                        <>
-                          <Crown className="w-6 h-6 text-zinc-950 fill-zinc-950" />
-                          <span className="text-[10px] font-black mt-0.5">Mastered</span>
-                        </>
-                      ) : node.isCompleted ? (
-                        <>
-                          <Check className="w-7 h-7 stroke-[3]" />
-                          <span className="text-[10px] font-black mt-0.5">Learned</span>
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="w-6 h-6 text-emerald-600 fill-emerald-600 animate-pulse" />
-                          <span className="text-[10px] font-black mt-0.5">Start</span>
-                        </>
-                      )}
+                      {node.isMastered ? <Crown className="w-4 h-4 mb-1 fill-current" /> : node.isCompleted ? <Check className="w-4 h-4 mb-1 stroke-[3]" /> : <Zap className="w-4 h-4 mb-1 text-emerald-600 fill-emerald-600" />}
+                      <span className="max-w-[68px] text-center text-[10px] leading-tight">{curriculumShortTitle(concept)}</span>
                     </button>
 
                     {/* Node Description Text Below */}
                     <div className="mt-2.5 text-center max-w-[210px] space-y-0.5">
-                      <div className="flex items-center justify-center gap-1">
-                        <span className="text-[11px] font-bold text-zinc-400">
-                          Level {idx + 1}
-                        </span>
-                        {isPinyin && (
-                          <span className="text-[9px] font-black px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 border border-sky-200">
-                            Audio Guide
-                          </span>
-                        )}
-                      </div>
                       <h4 className="text-sm font-black text-zinc-900 font-chinese leading-tight">
-                        {concept.titleZh}
+                        {curriculumChineseSummary(concept)}
                       </h4>
-                      <p className="text-[11px] text-zinc-500 font-medium line-clamp-1">
-                        {concept.titleEn}
-                      </p>
+                      {isInTodayPlan && <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-black uppercase text-sky-800">Today</span>}
 
                       {/* Micro Status Chip */}
                       <div className="flex items-center justify-center gap-1.5 pt-1">
@@ -322,19 +291,16 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Learning: {Math.round(node.learnedPercent)}%
+                          Learned: {Math.round(node.learnedPercent)}%
                         </span>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
                           node.isMastered 
                             ? 'bg-amber-100 text-amber-800 border border-amber-300 font-black' 
                             : 'bg-zinc-100 text-zinc-400'
                         }`}>
-                          Mastered: {node.isMastered ? `${Math.round(node.score * 100)}%` : '—'}
+                          Mastered: {node.score > 0 ? `${Math.round(node.score * 100)}%` : '—'}
                         </span>
                       </div>
-                      <p className="text-[10px] text-zinc-500">
-                        Status: {node.isMastered ? 'Stable across spaced reviews' : node.isCompleted ? `Review stage ${Math.min(node.reviewCount, 4)}/4` : node.learnedPercent > 0 ? 'Complete one output task' : 'Not started'}
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -391,7 +357,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                   <span>Learned (Studied & Practiced)</span>
                 </div>
                 <p className="text-[11px] text-zinc-600 leading-relaxed">
-                  You have completed the lesson and practice. Subsequent lessons are unlocked immediately. Spaced reviews are scheduled to retain it.
+                  You completed the lesson and practice. Spaced reviews help you retain it.
                 </p>
               </div>
 
@@ -497,7 +463,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
             {/* Module 3 */}
             <div className="p-3.5 bg-slate-800/80 rounded-2xl border border-slate-700 flex flex-col justify-between gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-amber-400">Module 3 · Scenarios</span>
+                <span className="text-xs font-black text-amber-400">Module 3 · Communication</span>
                 {m3Stats.masteredPct === 100 ? (
                   <Crown className="w-4 h-4 text-amber-400 fill-amber-400" />
                 ) : m3Stats.completedPct === 100 ? (
@@ -562,7 +528,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                 : 'text-zinc-600 hover:bg-zinc-100'
             }`}
           >
-            🎯 Module 3: Scenarios ({module3Concepts.length})
+            🎯 Module 3: Communication ({module3Concepts.length})
           </button>
         </div>
       </div>
@@ -583,7 +549,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
         renderModuleSection(
           'module2',
           'Module 2: Core Grammar Foundations',
-          'Essential HSK 1 Grammar Structures (SVO, 吗, 呢, 的, 在, 有, 想, 很)',
+          'Essential HSK 1 sentence patterns and questions',
           'Grammar Skeleton',
           'emerald',
           module2Concepts,
@@ -593,8 +559,8 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
       {(activeModuleTab === 'all' || activeModuleTab === 'module3') &&
         renderModuleSection(
           'module3',
-          `Module 3: Living Chinese Scenarios (${activePreset.badge || 'Focus'})`,
-          'Goal-Linked Living Chinese Scenarios strictly adhering to learned HSK 1 vocabulary',
+          `Module 3: Communication (${activePreset.badge || 'Focus'})`,
+          'Everyday communication with familiar HSK 1 language',
           'Real-Life Application',
           'amber',
           module3Concepts,

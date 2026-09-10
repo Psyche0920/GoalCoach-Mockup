@@ -7,6 +7,9 @@ import {
   LearningUnit,
   PlanItem,
 } from '../types.ts';
+import { curriculumShortTitle } from '../data/curriculumPresentation.ts';
+
+export const DAILY_PLANNER_VERSION = 5;
 
 export interface PlannerInput {
   learnerId: string;
@@ -21,6 +24,12 @@ export interface PlannerInput {
   stateVersion: number;
 }
 
+export const deriveDailyPlanStatus = (plan: Pick<DailyPlan, 'items' | 'freeformCompleted'>): DailyPlan['status'] => {
+  if (!plan.items.every((item) => item.completed)) return 'active';
+  const requiresFreeform = plan.items.some((item) => item.kind === 'free_play');
+  return requiresFreeform && !plan.freeformCompleted ? 'assessment_required' : 'completed';
+};
+
 const hasSatisfiedPrerequisites = (
   prerequisiteIds: readonly string[],
   progress: Readonly<Record<string, ConceptProgress>>,
@@ -33,12 +42,14 @@ const createItem = (
   unitIds: string[],
   outcome: string,
   minutes: number,
+  title: string,
 ): PlanItem => ({
   id,
   conceptId: conceptIds[0],
   conceptIds,
   unitIds,
   kind,
+  title,
   outcome,
   objective: outcome,
   estimatedMinutes: minutes,
@@ -62,21 +73,32 @@ export function generateDailyPlan(input: PlannerInput): DailyPlan {
     .sort((left, right) => left.nextReviewAt!.localeCompare(right.nextReviewAt!));
   const dueDemand = due.reduce((sum) => sum + 3, 0);
   const reviewOnly = dueDemand >= input.budgetMinutes * 0.8;
+  const minimumAnchorMinutes = input.blueprints
+    .filter((blueprint) => blueprint.planningEnabled !== false
+      && (blueprint.maximumDailyBudgetMinutes === undefined || input.budgetMinutes <= blueprint.maximumDailyBudgetMinutes)
+      && hasSatisfiedPrerequisites(blueprint.prerequisiteConceptIds, input.progress)
+      && blueprint.requiredConceptIds.some((id) => (input.progress[id]?.learnedPercent ?? 0) < 100))
+    .reduce((minimum, blueprint) => Math.min(minimum, blueprint.estimatedMinutes), Number.POSITIVE_INFINITY);
 
   for (const progress of due) {
     if (remaining < 3) break;
-    items.push(createItem(`review_${progress.conceptId}`, 'review', [progress.conceptId], [], `Retrieve ${progress.conceptId} from memory`, 3));
+    if (!reviewOnly && Number.isFinite(minimumAnchorMinutes) && remaining - 3 < minimumAnchorMinutes) break;
+    const concept = input.concepts.find((candidate) => candidate.conceptId === progress.conceptId);
+    items.push(createItem(`review_${progress.conceptId}`, 'review', [progress.conceptId], [], `Recall and use ${concept?.titleEn ?? 'a learned expression'}.`, 3, `Review · ${friendlyConceptName(progress.conceptId, concept)}`));
     remaining -= 3;
   }
 
-  if (reviewOnly) return buildPlan(input, items, undefined, 'Review backlog uses at least 80% of the daily budget.');
+  if (reviewOnly) return buildPlan(input, items, undefined, 'Review day');
 
   const unitById = new Map(input.units.map((unit) => [unit.id, unit]));
-  const eligibleBlueprints = input.blueprints.filter((blueprint) =>
+  const allEligibleBlueprints = input.blueprints.filter((blueprint) =>
     hasSatisfiedPrerequisites(blueprint.prerequisiteConceptIds, input.progress)
+    && (blueprint.maximumDailyBudgetMinutes === undefined || input.budgetMinutes <= blueprint.maximumDailyBudgetMinutes)
     && blueprint.estimatedMinutes <= remaining
     && blueprint.requiredConceptIds.some((id) => (input.progress[id]?.learnedPercent ?? 0) < 100),
   );
+  const communicationBlueprints = allEligibleBlueprints.filter((blueprint) => blueprint.planningEnabled !== false);
+  const eligibleBlueprints = communicationBlueprints.length > 0 ? communicationBlueprints : allEligibleBlueprints;
   const scored = eligibleBlueprints.map((blueprint) => {
     const sequence = Math.min(...blueprint.requiredConceptIds.map((id) => input.concepts.find((c) => c.conceptId === id)?.sequenceNo ?? 999));
     const uncovered = blueprint.requiredConceptIds.filter((id) => (input.progress[id]?.learnedPercent ?? 0) < 100).length / blueprint.requiredConceptIds.length;
@@ -86,31 +108,67 @@ export function generateDailyPlan(input: PlannerInput): DailyPlan {
   }).sort((left, right) => right.score - left.score || left.blueprint.id.localeCompare(right.blueprint.id));
   const anchor = scored[0]?.blueprint;
 
-  const remedialCap = Math.min(Math.floor(input.budgetMinutes * 0.25), remaining);
+  const remedialSpace = anchor ? Math.max(0, remaining - anchor.estimatedMinutes) : 0;
+  const remedialCap = Math.min(Math.floor(input.budgetMinutes * 0.25), remedialSpace);
   let remedialMinutes = 0;
   for (const error of [...input.errors].sort((a, b) => b.occurrences - a.occurrences)) {
     if (!anchor?.requiredConceptIds.includes(error.conceptId)) continue;
     const minutes = Math.min(3, remedialCap - remedialMinutes);
     if (minutes < 2 || minutes > remaining) break;
-    items.push(createItem(`remedial_${error.conceptId}`, 'remedial', [error.conceptId], [], `Correct recurring ${error.code} error`, minutes));
+    const concept = input.concepts.find((candidate) => candidate.conceptId === error.conceptId);
+    items.push(createItem(`remedial_${error.conceptId}`, 'remedial', [error.conceptId], [], `Correct one recurring issue before today’s speaking task.`, minutes, `Fix · ${friendlyConceptName(error.conceptId, concept)}`));
     remedialMinutes += minutes;
     remaining -= minutes;
   }
 
   if (anchor) {
+    const scheduledConceptIds = new Set(items.flatMap((item) => item.conceptIds));
     for (const unitId of anchor.requiredUnitIds) {
       const unit = unitById.get(unitId);
-      if (!unit || unit.estimatedMinutes > remaining) continue;
-      items.push(createItem(`new_${unit.id}`, 'new', unit.conceptIds, [unit.id], unit.functionId, unit.estimatedMinutes));
+      if (!unit || unit.estimatedMinutes > remaining) break;
+      const concept = input.concepts.find((candidate) => candidate.conceptId === unit.conceptIds[0]);
+      const prefix = concept?.category === 'pinyin' ? 'Sounds' : concept?.category === 'grammar' ? 'Pattern' : 'Use it';
+      items.push(createItem(`new_${unit.id}`, 'new', unit.conceptIds, [unit.id], concept?.communicativeGoal ?? unit.functionId, unit.estimatedMinutes, `${prefix} · ${friendlyConceptName(unit.conceptIds[0], concept)}`));
+      unit.conceptIds.forEach((conceptId) => scheduledConceptIds.add(conceptId));
+      remaining -= unit.estimatedMinutes;
+    }
+    const freePlayReserve = remaining >= 4 ? 4 : 2;
+    const anchorSequence = Math.min(...anchor.requiredConceptIds.map((conceptId) =>
+      input.concepts.find((concept) => concept.conceptId === conceptId)?.sequenceNo ?? Number.POSITIVE_INFINITY));
+    const supplementalUnits = input.units
+      .filter((unit) => unit.role === 'new_learning'
+        && !anchor.requiredUnitIds.includes(unit.id)
+        && unit.supportedThemes.some((theme) => anchor.supportedThemes.includes(theme))
+        && unit.conceptIds.some((conceptId) => (input.progress[conceptId]?.learnedPercent ?? 0) < 100)
+        && unit.conceptIds.every((conceptId) =>
+          (input.concepts.find((concept) => concept.conceptId === conceptId)?.sequenceNo ?? 0) >= anchorSequence))
+      .sort((left, right) => {
+        const leftSequence = input.concepts.find((concept) => concept.conceptId === left.conceptIds[0])?.sequenceNo ?? 999;
+        const rightSequence = input.concepts.find((concept) => concept.conceptId === right.conceptIds[0])?.sequenceNo ?? 999;
+        return leftSequence - rightSequence || left.id.localeCompare(right.id);
+      });
+    for (const unit of supplementalUnits) {
+      const prerequisitesSatisfied = unit.prerequisiteConceptIds.every((conceptId) =>
+        (input.progress[conceptId]?.learnedPercent ?? 0) >= 100 || scheduledConceptIds.has(conceptId));
+      if (!prerequisitesSatisfied || unit.estimatedMinutes > remaining - freePlayReserve) continue;
+      const concept = input.concepts.find((candidate) => candidate.conceptId === unit.conceptIds[0]);
+      const prefix = concept?.category === 'pinyin' ? 'Sounds' : concept?.category === 'grammar' ? 'Pattern' : 'Use it';
+      items.push(createItem(`new_${unit.id}`, 'new', unit.conceptIds, [unit.id], concept?.communicativeGoal ?? unit.functionId, unit.estimatedMinutes, `${prefix} · ${friendlyConceptName(unit.conceptIds[0], concept)}`));
+      unit.conceptIds.forEach((conceptId) => scheduledConceptIds.add(conceptId));
       remaining -= unit.estimatedMinutes;
     }
     const freePlayMinutes = Math.min(4, remaining);
     if (freePlayMinutes >= 2 && anchor.requiredConceptIds.every((id) =>
       items.some((item) => item.conceptIds.includes(id)) || (input.progress[id]?.learnedPercent ?? 0) > 0)) {
-      items.push(createItem(`free_play_${anchor.id}`, 'free_play', anchor.requiredConceptIds, anchor.requiredUnitIds, anchor.outcome, freePlayMinutes));
+      items.push(createItem(`free_play_${anchor.id}`, 'free_play', anchor.requiredConceptIds, anchor.requiredUnitIds, anchor.outcome, freePlayMinutes, 'Speak · Try it yourself'));
+      remaining -= freePlayMinutes;
     }
   }
-  return buildPlan(input, items, anchor, 'Review, remedial, complete learning units, then gated free play.');
+  return buildPlan(input, items, anchor, remaining > 0 ? `${remaining} min open` : 'Ready');
+}
+
+function friendlyConceptName(conceptId: string, concept?: CurriculumConcept): string {
+  return concept ? curriculumShortTitle(concept) : conceptId;
 }
 
 function buildPlan(
@@ -119,17 +177,25 @@ function buildPlan(
   blueprint: DailyGoalBlueprint | undefined,
   rationale: string,
 ): DailyPlan {
+  const estimatedMinutes = items.reduce((sum, item) => sum + item.estimatedMinutes, 0);
   return {
     id: `plan_${input.learnerId}_${input.date.slice(0, 10)}`,
     learnerId: input.learnerId,
     date: input.date,
     status: 'active',
+    title: blueprint?.title ?? 'Daily consolidation',
+    budgetMinutes: input.budgetMinutes,
+    estimatedMinutes,
+    effectiveMinutes: 0,
     items,
     rationale,
     blueprintId: blueprint?.id,
-    outcome: blueprint?.outcome,
+    outcome: blueprint?.outcome ?? 'Consolidate today\'s learning and prepare for tomorrow.',
     freeformCompleted: false,
+    freeformAssessment: blueprint?.freeformAssessment,
     stateVersion: input.stateVersion,
     generatedAt: input.date,
+    createdAt: input.date,
+    plannerVersion: DAILY_PLANNER_VERSION,
   };
 }

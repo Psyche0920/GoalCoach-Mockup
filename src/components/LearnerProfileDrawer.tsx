@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
-  Target, 
-  Clock, 
   Sparkles, 
   Check, 
   Save, 
@@ -17,24 +15,40 @@ import { GOAL_PRESETS } from '../data/curriculumThemes.ts';
 interface LearnerProfileDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  displayName: string;
   goal: LearningGoal | null;
-  onUpdateGoal: (updated: Partial<LearningGoal>) => void;
-  onRegeneratePlan?: () => void;
+  learnedProgress: number;
+  masteredProgress: number;
+  onUpdateGoal: (updated: Partial<LearningGoal>) => Promise<void>;
 }
 
 export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
   isOpen,
   onClose,
+  displayName,
   goal,
+  learnedProgress,
+  masteredProgress,
   onUpdateGoal,
-  onRegeneratePlan,
 }) => {
+  const masteredPercent = Math.round(Math.max(0, Math.min(1, masteredProgress)) * 100);
+  const learnedPercent = Math.round(Math.max(0, Math.min(1, learnedProgress)) * 100);
   const [minutes, setMinutes] = useState<number>(goal?.dailyAvailableMinutes || 15);
   const [targetDomain, setTargetDomain] = useState<string>(goal?.targetDomain || 'general');
   const activePreset = GOAL_PRESETS.find((p) => p.id === targetDomain) || GOAL_PRESETS[0];
   const [selectedInterests, setSelectedInterests] = useState<string[]>(
     goal?.interests || activePreset.priorityThemes
   );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const nextDomain = goal?.targetDomain || 'general';
+    const nextPreset = GOAL_PRESETS.find((preset) => preset.id === nextDomain) || GOAL_PRESETS[0];
+    setMinutes(goal?.dailyAvailableMinutes || 20);
+    setTargetDomain(nextDomain);
+    setSelectedInterests(goal?.interests || nextPreset.priorityThemes);
+  }, [goal, isOpen]);
 
   if (!isOpen) return null;
 
@@ -44,15 +58,20 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
     setSelectedInterests(preset.priorityThemes);
   };
 
-  const handleSave = () => {
+  const handleSave = async (): Promise<void> => {
     const preset = GOAL_PRESETS.find((p) => p.id === targetDomain) || GOAL_PRESETS[0];
-    onUpdateGoal({
-      dailyAvailableMinutes: minutes,
-      interests: (preset.priorityThemes || selectedInterests) as any,
-      targetDomain: targetDomain as any,
-    });
-    if (onRegeneratePlan) onRegeneratePlan();
-    onClose();
+    setSaving(true);
+    try {
+      await onUpdateGoal({
+        targetHskLevel: 1,
+        dailyAvailableMinutes: minutes,
+        interests: (preset.priorityThemes || selectedInterests) as LearningGoal['interests'],
+        targetDomain: targetDomain as LearningGoal['targetDomain'],
+      });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -62,10 +81,7 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
         <div className="px-6 py-5 border-b-2 border-zinc-200 bg-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <PandaMascot mood="happy" size={44} />
-            <div>
-              <h3 className="text-base font-black text-zinc-950">Learner Profile</h3>
-              <p className="text-xs font-bold text-emerald-600">Goal & Study Routine</p>
-            </div>
+            <h3 className="text-base font-black text-zinc-950">{displayName} Profile</h3>
           </div>
           <button
             onClick={onClose}
@@ -77,56 +93,53 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
 
         {/* Form Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Target Milestone */}
-          <div className="space-y-2">
-            <label className="text-xs font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-              <Target className="w-3.5 h-3.5 text-emerald-600" />
-              Target Standard
-            </label>
-            <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-emerald-600 text-white font-black text-xs">
-                HSK 1
+          {/* Fixed goal */}
+          <div className="rounded-2xl border-2 border-zinc-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-black uppercase tracking-wider text-zinc-500">Goal</h4>
+              <span className="rounded-lg bg-zinc-900 px-2.5 py-1 text-xs font-black text-white">HSK 1</span>
+            </div>
+          </div>
+
+          {/* Real curriculum progress */}
+          <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="block text-[10px] font-black uppercase text-zinc-500">Learned</span>
+                <span className="text-2xl font-black text-zinc-900">{learnedPercent}%</span>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white"><div className="h-full bg-zinc-700" style={{ width: `${learnedPercent}%` }} /></div>
               </div>
-              <div className="space-y-0.5">
-                <div className="text-xs font-black text-zinc-950">150 Core Words & Foundational Grammar</div>
-                <p className="text-[11px] text-zinc-600 leading-relaxed font-medium">
-                  Official standard by CLEC (Ministry of Education). Focuses on practical daily communication.
-                </p>
+              <div>
+                <span className="block text-[10px] font-black uppercase text-zinc-500">Mastered</span>
+                <span className="text-2xl font-black text-emerald-700">{masteredPercent}%</span>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white"><div className="h-full bg-emerald-500" style={{ width: `${masteredPercent}%` }} /></div>
               </div>
             </div>
           </div>
 
-          {/* Daily Study Commitment */}
-          <div className="space-y-2.5">
-            <label className="text-xs font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-emerald-600" />
-              Daily Study Goal
-            </label>
-            <div className="grid grid-cols-5 gap-2">
-              {[5, 10, 15, 20, 30].map(mins => (
-                <button
-                  key={mins}
-                  type="button"
-                  onClick={() => setMinutes(mins)}
-                  className={`py-3 rounded-2xl border-2 text-xs font-black transition-all flex flex-col items-center gap-1 cursor-pointer ${
-                    minutes === mins
-                      ? 'bg-emerald-500 border-zinc-950 text-zinc-950 shadow-[0_3px_0_#15803d]'
-                      : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100'
-                  }`}
-                >
-                  <span className="text-sm font-black">{mins}</span>
-                  <span className="text-[9px] uppercase tracking-tighter">min</span>
-                </button>
-              ))}
+          {/* Daily study time */}
+          <div>
+            <div className="flex items-center rounded-2xl border-2 border-zinc-200 bg-zinc-50 px-4 focus-within:border-emerald-500">
+              <input
+                type="number"
+                min={5}
+                max={120}
+                step={1}
+                value={Number.isFinite(minutes) ? minutes : ''}
+                onChange={(event) => setMinutes(event.currentTarget.valueAsNumber)}
+                aria-label="Daily study minutes"
+                className="min-w-0 flex-1 bg-transparent py-3 text-lg font-black outline-none"
+              />
+              <span className="text-xs font-black uppercase text-zinc-500">min / day</span>
             </div>
           </div>
 
-          {/* Focus Priority (Replaces old interest section, linking tailored examples and themes) */}
+          {/* Interest */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                Focus Priority
+                Interest
               </label>
               <span className="text-[10px] font-bold text-emerald-700">
                 Active: {activePreset.badge || activePreset.titleEn}
@@ -183,10 +196,11 @@ export const LearnerProfileDrawer: React.FC<LearnerProfileDrawerProps> = ({
           <button
             type="button"
             onClick={handleSave}
+            disabled={saving || !Number.isInteger(minutes) || minutes < 5 || minutes > 120}
             className="flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 rounded-2xl border-2 border-zinc-950 font-black text-xs uppercase tracking-wider shadow-[0_3px_0_#15803d] active:translate-y-0.5 active:shadow-none transition-all cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>Apply & Recalibrate</span>
+            <span>{saving ? 'Saving…' : 'Save'}</span>
           </button>
         </div>
       </div>

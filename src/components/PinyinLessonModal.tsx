@@ -112,7 +112,7 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
   };
 
   const handleNextStation = () => {
-    if (hasNextStation) {
+    if (hasNextStation && completedUnitScore !== null) {
       setCurrentUnit(FIVE_PINYIN_UNITS[currentUnitIndex + 1]);
       setShowUnitQuiz(false);
       setCompletedUnitScore(null);
@@ -176,9 +176,9 @@ export const PinyinLessonModal: React.FC<PinyinLessonModalProps> = ({
               <button
                 type="button"
                 onClick={handleNextStation}
-                disabled={!hasNextStation}
+                disabled={!hasNextStation || completedUnitScore === null}
                 className="p-1.5 rounded-xl text-zinc-700 hover:text-zinc-950 hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent transition-all cursor-pointer"
-                title="Next Station"
+                title={completedUnitScore === null ? 'Complete this unit first' : 'Next Station'}
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

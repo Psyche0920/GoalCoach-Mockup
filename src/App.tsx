@@ -16,6 +16,8 @@ export function App() {
   const [learnerId] = useState('learner_001');
   const [learnerState, setLearnerState] = useState<LearnerState | null>(null);
   const [overallProgress, setOverallProgress] = useState(0.0);
+  const [learnedProgress, setLearnedProgress] = useState(0.0);
+  const [masteredProgress, setMasteredProgress] = useState(0.0);
   const [nextAction, setNextAction] = useState<NextAction>('teach');
   const [concepts, setConcepts] = useState<CurriculumConcept[]>(HSK1_CONCEPTS);
   const [activeTab, setActiveTab] = useState<'plan' | 'curriculum' | 'retention'>('plan');
@@ -45,6 +47,8 @@ export function App() {
           acceptLearnerState(data.state);
           setNextAction(data.nextAction);
           setOverallProgress(data.overallProgress);
+          setLearnedProgress(data.progressSummary?.learnedProgress ?? 0);
+          setMasteredProgress(data.progressSummary?.masteredProgress ?? 0);
           const planRes = await fetch(`/api/v1/learners/${learnerId}/today-plan`);
           if (planRes.ok) {
             const plan = await planRes.json();
@@ -126,6 +130,8 @@ export function App() {
         const data = await res.json();
         acceptLearnerState(data.state);
         setOverallProgress(data.overallProgress);
+        setLearnedProgress(data.progressSummary?.learnedProgress ?? 0);
+        setMasteredProgress(data.progressSummary?.masteredProgress ?? 0);
         setNextAction(data.nextAction);
         return data.gradingResult;
       }
@@ -141,12 +147,14 @@ export function App() {
       const res = await fetch(`/api/v1/learners/${learnerId}/complete-concept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ concept_id: conceptId, score }),
+        body: JSON.stringify({ concept_id: conceptId, score, mode: studyMode }),
       });
       if (res.ok) {
         const data = await res.json();
         acceptLearnerState(data.state);
         setOverallProgress(data.overallProgress);
+        setLearnedProgress(data.progressSummary?.learnedProgress ?? 0);
+        setMasteredProgress(data.progressSummary?.masteredProgress ?? 0);
         setNextAction(data.nextAction);
       }
     } catch (err) {
@@ -202,15 +210,26 @@ export function App() {
               overallProgress={overallProgress}
               todayMistakes={todayMistakes}
               onStartStudy={(conceptId, mode = 'new') => {
+                setStudyMode(mode);
                 if (conceptId.startsWith('hsk1_p')) {
                   setSelectedPinyinConceptId(conceptId);
                 } else {
-                  setStudyMode(mode);
                   setSelectedStudyConceptId(conceptId);
                 }
               }}
               onUpdateGoal={handleUpdateGoal}
               onRegeneratePlan={handleRegeneratePlan}
+              onLearningUpdate={(update) => {
+                setOverallProgress(update.progressSummary.goalCompletion);
+                setLearnedProgress(update.progressSummary.learnedProgress);
+                setMasteredProgress(update.progressSummary.masteredProgress);
+                setLearnerState((current) => {
+                  if (!current || update.stateVersion < (current.stateVersion ?? 0)) return current;
+                  const conceptProgress = { ...(current.conceptProgress ?? {}) };
+                  for (const affected of update.affectedConcepts) conceptProgress[affected.conceptId] = affected;
+                  return { ...current, activePlan: update.plan, conceptProgress, stateVersion: update.stateVersion };
+                });
+              }}
             />
           )}
 
@@ -221,6 +240,7 @@ export function App() {
               goal={learnerState?.goal || null}
               onStartStudy={(conceptId, isPinyin) => {
                 if (isPinyin || conceptId.startsWith('hsk1_p')) {
+                  setStudyMode('new');
                   setSelectedPinyinConceptId(conceptId);
                 } else {
                   setStudyMode('new');
@@ -236,8 +256,10 @@ export function App() {
             <RetentionVisualizer
               learnerState={learnerState}
               concepts={concepts}
+              overallProgress={overallProgress}
               onReviewConcept={(conceptId) => {
                 if (conceptId.startsWith('hsk1_p')) {
+                  setStudyMode('review');
                   setSelectedPinyinConceptId(conceptId);
                 } else {
                   setStudyMode('review');
@@ -299,9 +321,11 @@ export function App() {
       <LearnerProfileDrawer
         isOpen={isProfileDrawerOpen}
         onClose={() => setIsProfileDrawerOpen(false)}
+        displayName={learnerState?.displayName || 'Ann'}
         goal={learnerState?.goal || null}
+        learnedProgress={learnedProgress}
+        masteredProgress={masteredProgress}
         onUpdateGoal={handleUpdateGoal}
-        onRegeneratePlan={handleRegeneratePlan}
       />
     </div>
   );

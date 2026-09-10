@@ -9,7 +9,7 @@ These ownership boundaries are proposed from the roles stated in the proposal. T
 | Curriculum, linguistic quality, error taxonomy, evaluation data | Weng Man Cheung | Weijia |
 | Core orchestration, model adapters, fallback, telemetry | Musab | Weijia, Jiyan |
 | Grading rubric and prompt validation | Weijia + Weng Man | Musab |
-| Frontend / Streamlit | `TODO(owner)` | Backend and product owners |
+| Frontend / React | `TODO(owner)` | Backend and product owners |
 | Evaluation adjudication | `TODO(owner)` | At least two human annotators |
 | Demo narrative and rehearsal | Weijia | Entire team |
 
